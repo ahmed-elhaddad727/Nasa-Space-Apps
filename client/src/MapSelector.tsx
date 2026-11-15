@@ -85,9 +85,6 @@ export default function MapSelector({ onComplete }: MapSelectorProps) {
       isPanningMapRef.current = true;
       panStartRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
     }
-      isPanningMapRef.current = true;
-      panStartRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
-    }
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -350,3 +347,4 @@ export default function MapSelector({ onComplete }: MapSelectorProps) {
       </div>
     </div>
   );
+}

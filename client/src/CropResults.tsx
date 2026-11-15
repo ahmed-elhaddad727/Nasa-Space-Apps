@@ -116,9 +116,5 @@ export default function CropResults({ result, payload, onBack }: CropResultsProp
       </div>
     </div>
   );
-          ))}
-        </div>
-      </div>
-    </div>
-  );
 }
+
