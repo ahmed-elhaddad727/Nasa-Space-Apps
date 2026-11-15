@@ -1,3 +1,4 @@
+import './App.css'
 import { useState } from 'react'
 import MapSelector from './MapSelector'
 import CropResults from './CropResults'
@@ -19,6 +20,8 @@ function App() {
     <MapSelector
       onComplete={(result, payload) => setAnalysisData({ result, payload })}
     />
+  )
+}
   )
 }
 
