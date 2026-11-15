@@ -5,14 +5,16 @@ import {
   BackendResponse,
 } from './services/cropApi';
 
-export default function MapSelector() {
+interface MapSelectorProps {
+  onComplete: (result: BackendResponse, payload: NasaAgroPayload) => void;
+}
+
+export default function MapSelector({ onComplete }: MapSelectorProps) {
   const [coords, setCoords] = useState<{ lat: number; lon: number }>({ lat: 30.0444, lon: 31.2357 });
   const [zoom, setZoom] = useState<number>(1);
   const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [showCoords, setShowCoords] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [backendResult, setBackendResult] = useState<BackendResponse | null>(null);
-  const [lastPayload, setLastPayload] = useState<NasaAgroPayload | null>(null);
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const isDraggingPointerRef = useRef<boolean>(false);
@@ -84,12 +86,11 @@ export default function MapSelector() {
     setZoom(nextZoom);
   };
 
-  // Fetch NASA POWER data -> Send JSON to Python Backend -> Receive Crops
+  // Fetch NASA POWER data -> Send JSON to Backend -> Transition to CropResults screen
   const handleSelect = async () => {
     setIsLoading(true);
     try {
       const now = new Date();
-      // NASA POWER has a ~3-day processing lag, so query a recent valid date window
       const targetDate = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
       const yyyymmdd = targetDate.toISOString().slice(0, 10).replace(/-/g, '');
 
@@ -118,11 +119,8 @@ export default function MapSelector() {
         },
       };
 
-      setLastPayload(payload);
-
-      // Send JSON payload to Backend and wait for crop recommendations
       const result = await sendAgroDataToBackend(payload);
-      setBackendResult(result);
+      onComplete(result, payload);
     } catch (err) {
       console.error('Error fetching agro data:', err);
     } finally {
@@ -130,7 +128,6 @@ export default function MapSelector() {
     }
   };
 
-  // Convert lat/lon to percentage inside base map plane
   const pointerLeftPct = ((coords.lon + 180) / 360) * 100;
   const pointerTopPct = ((90 - coords.lat) / 180) * 100;
 
@@ -236,54 +233,6 @@ export default function MapSelector() {
       >
         {isLoading ? 'analyzing...' : 'select'}
       </button>
-
-      {/* Returned Crops Display */}
-      {backendResult && (
-        <div className="mt-6 w-full max-w-4xl border-2 border-black p-5 bg-white">
-          <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-4 border-b-2 border-black">
-            <div>
-              <h2 className="text-base font-bold uppercase tracking-wider">
-                Recommended Crops & Rotation
-              </h2>
-              <p className="text-xs font-mono text-neutral-600">
-                {backendResult.location_summary}
-              </p>
-            </div>
-            <span className="text-[11px] font-mono px-2.5 py-0.5 border border-black rounded-full">
-              {backendResult.status === 'live'
-                ? '● Connected to Backend'
-                : '○ Demo Fallback (Backend Offline)'}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {backendResult.recommendations.map((item, idx) => (
-              <div
-                key={idx}
-                className="border-2 border-black p-3.5 flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-bold capitalize text-sm">
-                      {item.crop}
-                    </span>
-                    <span className="font-mono text-xs font-semibold border border-black px-2 py-0.5 rounded-full">
-                      {item.suitability_score}% match
-                    </span>
-                  </div>
-                  <p className="text-xs text-neutral-600 font-mono mb-2">
-                    Season: {item.season}
-                  </p>
-                  <p className="text-xs leading-relaxed mb-3">{item.notes}</p>
-                </div>
-                <div className="pt-2 border-t border-black/20 text-[11px] font-mono">
-                  Next in rotation: <strong>{item.rotation_next}</strong>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

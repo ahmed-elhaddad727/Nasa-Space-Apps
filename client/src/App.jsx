@@ -1,12 +1,24 @@
 import { useState } from 'react'
-import './App.css'
+import MapSelector from './MapSelector'
+import CropResults from './CropResults'
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [analysisData, setAnalysisData] = useState(null)
+
+  if (analysisData) {
+    return (
+      <CropResults
+        result={analysisData.result}
+        payload={analysisData.payload}
+        onBack={() => setAnalysisData(null)}
+      />
+    )
+  }
 
   return (
-    <>
-    </>
+    <MapSelector
+      onComplete={(result, payload) => setAnalysisData({ result, payload })}
+    />
   )
 }
 
