@@ -5,7 +5,7 @@ import {
   BackendResponse,
 } from './services/cropApi';
 
-const GRASS_IMAGE = "../public/grass.svg";
+const GRASS_IMAGE = "../public/grass_photo.svg";
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 12;
