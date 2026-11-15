@@ -2,7 +2,7 @@ import React from 'react';
 import { BackendResponse, NasaAgroPayload } from './services/cropApi';
 
 // Same grass image as the map page (change the path if you use your own photo)
-const GRASS_IMAGE = '/grass.svg';
+const GRASS_IMAGE = '/grass_photo.svg';
 
 interface CropResultsProps {
   result: BackendResponse;
