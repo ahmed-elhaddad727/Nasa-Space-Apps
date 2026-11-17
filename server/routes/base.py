@@ -9,5 +9,5 @@ base_router = APIRouter(
     tags=["api_v1"],
 )
 @base_router.get("/welcome")
-async def welcome(req, res):
+async def welcome():
     return {"server works"}
