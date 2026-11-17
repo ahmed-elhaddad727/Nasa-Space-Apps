@@ -101,6 +101,7 @@ class Settings(BaseSettings):
         10: "summer",
     }
     EGYPTAIN_MIN_SEASON_COVERAGE: ClassVar[float] = 0.8
+    
     # US
     US_CROP_LIST: ClassVar[list[str]] = [
         # --- Major Row Crops & Grains ---
@@ -191,7 +192,27 @@ class Settings(BaseSettings):
         "NewYork_FingerLakes": [-76.98, 42.87],
         "Maine_AroostookCounty": [-68.01, 46.68],
     }
-
+    US_SEASON_DAYS: ClassVar[dict[str, int]] = {
+        "winter": 90,
+        "spring": 92,
+        "summer": 92,
+        "fall": 91,
+    }
+    US_SEASON_OF_MONTH: ClassVar[dict[int, str]] = {
+        12: "winter",
+        1: "winter",
+        2: "winter",
+        3: "spring",
+        4: "spring",
+        5: "spring",
+        6: "summer",
+        7: "summer",
+        8: "summer",
+        9: "fall",
+        10: "fall",
+        11: "fall",
+    }
+    US_MIN_SEASON_COVERAGE: ClassVar[float] = 0.8
     CLIMATE_FEATURES: ClassVar[list[str]] = [
         "t_mean",
         "t_min_mean",

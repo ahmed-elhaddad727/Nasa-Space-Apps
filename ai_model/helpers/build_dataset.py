@@ -1,5 +1,5 @@
 """
-build the training dataset
+this file is responsible for building the training dataset
 """
 
 from pathlib import Path
@@ -66,8 +66,6 @@ def load_indicators(SEASON_OF_MONTH, INDICATOR_FILES):
     return add_season(ind, SEASON_OF_MONTH)
 
 
-
-
 def load_crops(CROPS_CSV):
     crops = pd.read_csv(CROPS_CSV)
     crops.columns = crops.columns.str.strip().str.upper()
@@ -90,6 +88,12 @@ def load_crops(CROPS_CSV):
 
 
 def seasonal_climate(SEASON_DAYS, MIN_SEASON_COVERAGE, ind):
+    ind = ind.copy()
+    ind["tmin_lt0"] = (ind["Temp_Min_C"] < 0).astype(float)
+    ind["tmin_lt5"] = (ind["Temp_Min_C"] < 5).astype(float)
+    ind["tmax_gt35"] = (ind["Temp_Max_C"] > 35).astype(float)
+    ind["tmax_gt40"] = (ind["Temp_Max_C"] > 40).astype(float)
+
     out = (
         ind.groupby(["location", "season", "season_year"])
         .agg(
@@ -97,10 +101,17 @@ def seasonal_climate(SEASON_DAYS, MIN_SEASON_COVERAGE, ind):
             lon=("lon", "first"),
             n_days=("Temperature_C", "count"),
             t_mean=("Temperature_C", "mean"),
+            t_std=("Temperature_C", "std"),
             t_min_mean=("Temp_Min_C", "mean"),
             t_max_mean=("Temp_Max_C", "mean"),
             t_min_abs=("Temp_Min_C", "min"),
             t_max_abs=("Temp_Max_C", "max"),
+            t_min_p05=("Temp_Min_C", lambda s: s.quantile(0.05)),
+            t_max_p95=("Temp_Max_C", lambda s: s.quantile(0.95)),
+            frac_tmin_lt0=("tmin_lt0", "mean"),
+            frac_tmin_lt5=("tmin_lt5", "mean"),
+            frac_tmax_gt35=("tmax_gt35", "mean"),
+            frac_tmax_gt40=("tmax_gt40", "mean"),
             ndvi_mean=("NDVI", "mean"),
             precip_mean=("Precipitation_mm", "mean"),
             sm_mean=("Soil_Moisture_m3m3", "mean"),
@@ -227,7 +238,7 @@ def build(
         labels["n_days"] >= MIN_SEASON_COVERAGE * labels["season"].map(SEASON_DAYS)
     ]
 
-    clim = seasonal_climate(SEASON_DAYS, MIN_SEASON_COVERAGE, ind)
+    clim = seasonal_climate(SEASON_DAYS, MIN_SEASON_COVERAGE, valid)
     df = (
         labels.drop(columns="n_days")
         .merge(clim, on=["location", "season", "season_year"])
