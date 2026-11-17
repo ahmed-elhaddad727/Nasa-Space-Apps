@@ -24,7 +24,7 @@ except Exception:
 
 
 def get_indicators(LOCATIONS, region):
-    OUT_PATH = Path(f"data/{region}/{region}_climate_soil_data")
+    OUT_PATH = Path(f"data/{region}/{region}_climate_soil_data.csv")
     full_days = pd.DatetimeIndex(app_settings.FULL_DAYS)
     start = full_days.min().normalize()
     end = full_days.max().normalize()
