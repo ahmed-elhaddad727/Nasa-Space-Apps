@@ -7,6 +7,7 @@ Importing this module runs nothing. Use it like this:
     train()
     print_plans(recommend("beheira_damanhur", "2026-11-17", previous_crop="wheat"))
 """
+
 from pathlib import Path
 import sys
 
@@ -33,16 +34,12 @@ if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 import ee
 
-
 # ---------------- Paths ----------------
-try:
-    ROOT_DIR = Path(__file__).resolve().parents[2]
-except NameError: 
-    ROOT_DIR = Path.cwd()
+ROOT_DIR = Path(__file__).resolve().parents[3]
 
-TRAINING_CSV = "data/egypt/egypt_training_data.csv"
-CROPS_CSV = "data/egypt/egypt_EcoCrop_DB.csv"
-INDICATORS_CSV = "data/egypt/egypt_climate_soil_data.csv"
+TRAINING_CSV = ROOT_DIR / "data" / "egypt" / "egypt_training_data.csv"
+CROPS_CSV = ROOT_DIR / "data" / "egypt" / "egypt_EcoCrop_DB.csv"
+INDICATORS_CSV = ROOT_DIR / "data" / "egypt" / "egypt_climate_soil_data.csv"
 MODEL_PATH = ROOT_DIR / "saved_models" / "egypt_rotation_model.joblib"
 SCORES_PATH = ROOT_DIR / "saved_models" / "egypt_model_scores.json"
 
@@ -64,11 +61,11 @@ SEASON_OF_MONTH = {
 SEASON_DAYS = {"winter": 181, "summer": 184}
 
 # ---------------- Rotation rules (tunable heuristics) ----------------
-WATER_PENALTY = 25  
-MIN_SUITABILITY = 30  
-SAME_CROP_FACTOR = 0.5  
-SAME_FAMILY_FACTOR = 0.7  
-LEGUME_BONUS = 1.10 
+WATER_PENALTY = 25
+MIN_SUITABILITY = 30
+SAME_CROP_FACTOR = 0.5
+SAME_FAMILY_FACTOR = 0.7
+LEGUME_BONUS = 1.10
 LEGUME_FAMILIES = {"fabaceae", "leguminosae"}
 
 TARGET = "suitability_score"
@@ -217,6 +214,14 @@ def train():
     df = make_features(pd.read_csv(TRAINING_CSV))
     crops = load_crops()
     y = df[TARGET]
+
+    available_features = [feature for feature in FEATURES if feature in df.columns]
+    missing_features = [feature for feature in FEATURES if feature not in df.columns]
+    if missing_features:
+        print(
+            f"Warning: Missing features in dataset, skipping: {set(missing_features)}"
+        )
+
     print(
         f"Training table: {len(df):,} rows | {df['location'].nunique()} locations | "
         f"{df['COMNAME'].nunique()} crops | {df['season_year'].nunique()} season-years"
@@ -228,8 +233,9 @@ def train():
     periods = sorted(df["period"].unique())
     if len(periods) >= 6:
         test = df["period"] >= periods[-2]
-        m = new_model().fit(df.loc[~test, FEATURES], y[~test])
-        pred = np.clip(m.predict(df.loc[test, FEATURES]), 0, 100)
+
+        m = new_model().fit(df.loc[~test, available_features], y[~test])
+        pred = np.clip(m.predict(df.loc[test, available_features]), 0, 100)
         scores["suitability_time_split"] = _scores(y[test], pred)
         scores["suitability_formula_on_seasonal_means"] = _scores(
             y[test], df.loc[test, "formula_suit"]
@@ -246,8 +252,8 @@ def train():
     if n_groups >= 2:
         oof = np.zeros(len(df))
         for tr, te in GroupKFold(n_splits=n_groups).split(df, groups=df["location"]):
-            mm = new_model().fit(df.iloc[tr][FEATURES], y.iloc[tr])
-            oof[te] = np.clip(mm.predict(df.iloc[te][FEATURES]), 0, 100)
+            mm = new_model().fit(df.iloc[tr][available_features], y.iloc[tr])
+            oof[te] = np.clip(mm.predict(df.iloc[te][available_features]), 0, 100)
         scores["suitability_location_split"] = _scores(y, oof)
         print(
             f"location split  MAE={scores['suitability_location_split']['MAE']:.2f}  "
@@ -268,19 +274,32 @@ def train():
     SCORES_PATH.parent.mkdir(parents=True, exist_ok=True)
     SCORES_PATH.write_text(json.dumps(scores, indent=2), encoding="utf-8")
 
-    model = new_model().fit(df[FEATURES], y)
+    model = new_model().fit(df[available_features], y)
 
-    clim = df.drop_duplicates(["location", "season", "season_year"])[
-        ["location", "season", "season_year", "lat", "lon"]
-        + CLIMATE_FEATURES
+    available_climate = [
+        feature for feature in CLIMATE_FEATURES if feature in df.columns
     ]
+    clim_columns = [
+        "location",
+        "season",
+        "season_year",
+        "lat",
+        "lon",
+    ] + available_climate
+    clim = df.drop_duplicates(["location", "season", "season_year"])[clim_columns]
     climatology = clim.groupby(["location", "season"], as_index=False)[
-        ["lat", "lon"] + CLIMATE_FEATURES
+        ["lat", "lon"] + available_climate
     ].mean()
 
     MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(
-        {"model": model, "crops": crops, "climatology": climatology}, MODEL_PATH
+        {
+            "model": model,
+            "model_features": available_features,
+            "crops": crops,
+            "climatology": climatology,
+        },
+        MODEL_PATH,
     )
     print(f"Saved {MODEL_PATH}")
 
@@ -316,15 +335,18 @@ def score_crops(bundle, feats, season):
     """Suitability (ML) and irrigation deficit (formula) for every crop in one season."""
     crops = bundle["crops"].copy()
     for k in ["lat", "lon"] + CLIMATE_FEATURES:
-        crops[k] = feats[k]
+        crops[k] = feats.get(k, np.nan)
     crops["season_is_winter"] = int(season == "winter")
     crops = make_features(crops)
 
-    crops["suitability"] = np.clip(bundle["model"].predict(crops[FEATURES]), 0, 100)
+    model_features = bundle.get("model_features", FEATURES)
+    crops["suitability"] = np.clip(
+        bundle["model"].predict(crops[model_features]), 0, 100
+    )
     crops["deficit"] = crops["formula_deficit"]
     crops["water_stress"] = np.clip(
         crops["deficit"] / np.maximum(crops["need_month"], 1.0), 0, 1
-    )  
+    )
     crops["fits_season"] = crops["GMIN"].isna() | (crops["GMIN"] <= SEASON_DAYS[season])
     return crops
 
@@ -442,4 +464,7 @@ def print_plans(plans):
                 f"deficit {s['avg_monthly_irrigation_deficit_mm']:>7} mm/month"
             )
         print()
-train()
+
+
+if __name__ == "__main__":
+    train()
