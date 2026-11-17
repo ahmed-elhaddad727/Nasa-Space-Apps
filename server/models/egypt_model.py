@@ -393,6 +393,5 @@ def main():
         print_plans(recommend(args.location, args.start, args.prev, top_k=args.top_k))
 
 
-# runs from a terminal only, never when imported or run inside Jupyter
 if __name__ == "__main__" and "ipykernel" not in sys.modules:
     main()
