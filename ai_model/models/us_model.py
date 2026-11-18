@@ -1,86 +1,51 @@
 """
-egypt_model.py
+us_model.py
 
 Importing this module runs nothing. Use it like this:
 
-    from server.models.egypt_model import train, recommend, print_plans
+    from server.models.us_model import train, recommend, print_plans
     train()
     print_plans(recommend("beheira_damanhur", "2026-11-17", previous_crop="wheat"))
 """
 
-from pathlib import Path
-import sys
-
-repo_root = Path(__file__).resolve().parents[3]
-if str(repo_root) not in sys.path:
-    sys.path.insert(0, str(repo_root))
 import itertools
 import json
 from pathlib import Path
+import sys
 
 import joblib
 import numpy as np
 import pandas as pd
+from scipy.stats import uniform, randint
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.metrics import mean_absolute_error, r2_score
-from sklearn.model_selection import GroupKFold
-from pathlib import Path
-import sys
-from pathlib import Path
-import sys
+from sklearn.model_selection import GroupKFold, RandomizedSearchCV
 
-repo_root = Path(__file__).resolve().parents[3]
+repo_root = Path(__file__).resolve().parents[1]
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
-import ee
+from config import get_settings
 
+app_settings = get_settings()
 # ---------------- Paths ----------------
-try:
-    ROOT_DIR = Path(__file__).resolve().parents[2]
-except NameError:  # notebook / interactive window
-    ROOT_DIR = Path.cwd()
+ROOT_DIR = Path(__file__).resolve().parents[1]
 
 TRAINING_CSV = "data/us/us_training_data.csv"
 CROPS_CSV = "data/us/us_EcoCrop_DB.csv"
 INDICATORS_CSV = "data/us/us_climate_soil_data.csv"
-MODEL_PATH = ROOT_DIR / "saved_models" / "us_rotation_model.joblib"
-SCORES_PATH = ROOT_DIR / "saved_models" / "us_model_scores.json"
-
+MODEL_PATH = "saved_models/us_rotation_model.joblib"
+SCORES_PATH = "saved_models/us_model_scores.json"
 
 # ---------------- Rotation rules (tunable heuristics) ----------------
-WATER_PENALTY = 25 
-MIN_SUITABILITY = 30  
-SAME_CROP_FACTOR = 0.5  
-SAME_FAMILY_FACTOR = 0.7  
-LEGUME_BONUS = 1.10  
+WATER_PENALTY = 25
+MIN_SUITABILITY = 30
+SAME_CROP_FACTOR = 0.5
+SAME_FAMILY_FACTOR = 0.7
+LEGUME_BONUS = 1.10
 LEGUME_FAMILIES = {"fabaceae", "leguminosae"}
 
 TARGET = "suitability_score"
 
-import numpy as np
-import pandas as pd
-
-US_SEASON_DAYS = {
-    "winter": 90,
-    "spring": 92,
-    "summer": 92,
-    "fall": 91,
-}
-US_SEASON_OF_MONTH = {
-    12: "winter",
-    1: "winter",
-    2: "winter",
-    3: "spring",
-    4: "spring",
-    5: "spring",
-    6: "summer",
-    7: "summer",
-    8: "summer",
-    9: "fall",
-    10: "fall",
-    11: "fall",
-}
-US_MIN_SEASON_COVERAGE = 0.8
 BASE_CLIMATE = [
     "t_mean",
     "t_min_mean",
@@ -112,8 +77,6 @@ DERIVED = [
     "d_tmaxmean_tmax",
     "need_month",
     "water_gap",
-    "formula_suit",
-    "formula_deficit",
 ]
 FEATURES = ["season_is_winter", "lat", "lon"] + CLIMATE_FEATURES + CROP_PARAMS + DERIVED
 
@@ -211,6 +174,40 @@ def new_model():
     )
 
 
+def train_tuned_model(X_train, y_train):
+    print("\nTuning hyperparameters (this may take a minute)...")
+    base_model = HistGradientBoostingRegressor(loss="absolute_error", random_state=42)
+
+    param_dist = {
+        "learning_rate": uniform(0.01, 0.2),
+        "max_iter": randint(200, 1000),
+        "max_leaf_nodes": randint(31, 127),
+        "min_samples_leaf": randint(10, 50),
+        "l2_regularization": uniform(0.0, 5.0),
+    }
+
+    # Searches 20 random combinations using 3-fold cross validation
+    search = RandomizedSearchCV(
+        base_model,
+        param_distributions=param_dist,
+        n_iter=20,
+        cv=3,
+        scoring="neg_mean_absolute_error",
+        n_jobs=-1,
+        random_state=42,
+    )
+
+    search.fit(X_train, y_train)
+    print(f"Best params: {search.best_params_}")
+
+    # Calculate MAE on the entire training set using the best estimator
+    y_pred = search.predict(X_train)
+    mae = mean_absolute_error(y_train, y_pred)
+    print(f"MAE after training (Full Dataset): {mae:.2f}\n")
+
+    return search.best_estimator_
+
+
 def _scores(y_true, y_pred):
     return {
         "MAE": float(mean_absolute_error(y_true, y_pred)),
@@ -222,6 +219,14 @@ def train():
     df = make_features(pd.read_csv(TRAINING_CSV))
     crops = load_crops()
     y = df[TARGET]
+
+    available_features = [feature for feature in FEATURES if feature in df.columns]
+    missing_features = [feature for feature in FEATURES if feature not in df.columns]
+    if missing_features:
+        print(
+            f"Warning: Missing features in dataset, skipping: {set(missing_features)}"
+        )
+
     print(
         f"Training table: {len(df):,} rows | {df['location'].nunique()} locations | "
         f"{df['COMNAME'].nunique()} crops | {df['season_year'].nunique()} season-years"
@@ -233,8 +238,9 @@ def train():
     periods = sorted(df["period"].unique())
     if len(periods) >= 6:
         test = df["period"] >= periods[-2]
-        m = new_model().fit(df.loc[~test, FEATURES], y[~test])
-        pred = np.clip(m.predict(df.loc[test, FEATURES]), 0, 100)
+
+        m = new_model().fit(df.loc[~test, available_features], y[~test])
+        pred = np.clip(m.predict(df.loc[test, available_features]), 0, 100)
         scores["suitability_time_split"] = _scores(y[test], pred)
         scores["suitability_formula_on_seasonal_means"] = _scores(
             y[test], df.loc[test, "formula_suit"]
@@ -251,8 +257,8 @@ def train():
     if n_groups >= 2:
         oof = np.zeros(len(df))
         for tr, te in GroupKFold(n_splits=n_groups).split(df, groups=df["location"]):
-            mm = new_model().fit(df.iloc[tr][FEATURES], y.iloc[tr])
-            oof[te] = np.clip(mm.predict(df.iloc[te][FEATURES]), 0, 100)
+            mm = new_model().fit(df.iloc[tr][available_features], y.iloc[tr])
+            oof[te] = np.clip(mm.predict(df.iloc[te][available_features]), 0, 100)
         scores["suitability_location_split"] = _scores(y, oof)
         print(
             f"location split  MAE={scores['suitability_location_split']['MAE']:.2f}  "
@@ -265,28 +271,36 @@ def train():
     print(
         f"deficit formula vs label  MAE={scores['deficit_formula_vs_label']['MAE']:.2f}"
     )
-    print(
-        "(labels are a formula of the features, so these scores show the model has "
-        "learned the rules, not that the rules are agronomically right)"
-    )
 
-    SCORES_PATH.parent.mkdir(parents=True, exist_ok=True)
-    SCORES_PATH.write_text(json.dumps(scores, indent=2), encoding="utf-8")
+    # Train the final tuned model on the entire dataset
+    model = train_tuned_model(df[available_features], y)
 
-    model = new_model().fit(df[FEATURES], y)
-
-    clim = df.drop_duplicates(["location", "season", "season_year"])[
-        ["location", "season", "season_year", "lat", "lon"] + CLIMATE_FEATURES
+    available_climate = [
+        feature for feature in CLIMATE_FEATURES if feature in df.columns
     ]
+    clim_columns = [
+        "location",
+        "season",
+        "season_year",
+        "lat",
+        "lon",
+    ] + available_climate
+    clim = df.drop_duplicates(["location", "season", "season_year"])[clim_columns]
     climatology = clim.groupby(["location", "season"], as_index=False)[
-        ["lat", "lon"] + CLIMATE_FEATURES
+        ["lat", "lon"] + available_climate
     ].mean()
 
-    MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    # Save the best model
     joblib.dump(
-        {"model": model, "crops": crops, "climatology": climatology}, MODEL_PATH
+        {
+            "model": model,
+            "model_features": available_features,
+            "crops": crops,
+            "climatology": climatology,
+        },
+        MODEL_PATH,
     )
-    print(f"Saved {MODEL_PATH}")
+    print(f"Saved best tuned model to {MODEL_PATH}")
 
 
 # =====================================================================
@@ -295,7 +309,7 @@ def train():
 def upcoming_seasons(start, n=3, include_current=True):
     """List of (season, season_year, label). Winter(Y) -> Summer(Y+1) -> Winter(Y+1) ..."""
     start = pd.Timestamp(start)
-    season = US_SEASON_OF_MONTH[start.month]
+    season = app_settings.US_SEASON_OF_MONTH[start.month]
     year = start.year - 1 if (season == "winter" and start.month <= 4) else start.year
 
     def step(s, y):
@@ -320,17 +334,20 @@ def score_crops(bundle, feats, season):
     """Suitability (ML) and irrigation deficit (formula) for every crop in one season."""
     crops = bundle["crops"].copy()
     for k in ["lat", "lon"] + CLIMATE_FEATURES:
-        crops[k] = feats[k]
+        crops[k] = feats.get(k, np.nan)
     crops["season_is_winter"] = int(season == "winter")
     crops = make_features(crops)
 
-    crops["suitability"] = np.clip(bundle["model"].predict(crops[FEATURES]), 0, 100)
+    model_features = bundle.get("model_features", FEATURES)
+    crops["suitability"] = np.clip(
+        bundle["model"].predict(crops[model_features]), 0, 100
+    )
     crops["deficit"] = crops["formula_deficit"]
     crops["water_stress"] = np.clip(
         crops["deficit"] / np.maximum(crops["need_month"], 1.0), 0, 1
-    )  # 0 = need fully met
+    )
     crops["fits_season"] = crops["GMIN"].isna() | (
-        crops["GMIN"] <= US_SEASON_DAYS[season]
+        crops["GMIN"] <= app_settings.US_SEASON_DAYS[season]
     )
     return crops
 
@@ -392,9 +409,49 @@ def recommend_for_features(
 
     tables = []
     for (season, _, label), feats in zip(seasons, feats_list):
-        cand = candidates(score_crops(bundle, feats, season), top_n)
+        scored = score_crops(bundle, feats, season)
+        cand = candidates(scored, top_n)
         if not cand:
-            raise ValueError(f"No crop is suitable for {label} at this location.")
+            top_row = scored.sort_values("suitability", ascending=False).iloc[0]
+            top_crop = top_row["COMNAME"]
+            top_score = round(float(top_row["suitability"]), 1)
+
+            t_mean = feats.get("t_mean", 0.0)
+            t_min_abs = feats.get("t_min_abs", 0.0)
+            t_max_mean = feats.get("t_max_mean", 0.0)
+            t_max_abs = feats.get("t_max_abs", 0.0)
+            sm_mean = feats.get("sm_mean", 0.0)
+            precip = feats.get("precip_total", 0.0)
+
+            reasons = []
+            if t_mean < 10.0 or t_min_abs < -5.0:
+                reasons.append(
+                    f"severe cold stress during {label} (seasonal mean temperature is {t_mean:.1f}°C "
+                    f"with an absolute minimum of {t_min_abs:.1f}°C)"
+                )
+            if t_max_mean > 38.0 or t_max_abs > 45.0:
+                reasons.append(
+                    f"extreme heat stress during {label} (average daily high is {t_max_mean:.1f}°C "
+                    f"with peaks reaching {t_max_abs:.1f}°C)"
+                )
+            if sm_mean < 0.12:
+                reasons.append(
+                    f"critically low root-zone soil wetness ({sm_mean * 100:.0f}%) and low seasonal "
+                    f"precipitation ({precip:.1f} mm)"
+                )
+
+            if not reasons:
+                reasons.append(
+                    f"unfavorable agroclimatic balance during {label} (mean temp {t_mean:.1f}°C, "
+                    f"soil moisture {sm_mean * 100:.0f}%, seasonal rainfall {precip:.1f} mm)"
+                )
+
+            reason_str = " and ".join(reasons)
+            raise ValueError(
+                f"No crop met the minimum {MIN_SUITABILITY}% suitability threshold for {label} due to "
+                f"{reason_str}. Even the most resilient candidate ({top_crop.title()}) only reached "
+                f"{top_score}% suitability."
+            )
         tables.append(cand)
 
     out = []
@@ -450,4 +507,5 @@ def print_plans(plans):
         print()
 
 
-train()
+if __name__ == "__main__":
+    train()

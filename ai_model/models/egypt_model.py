@@ -16,9 +16,10 @@ import sys
 import joblib
 import numpy as np
 import pandas as pd
+from scipy.stats import uniform, randint
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.metrics import mean_absolute_error, r2_score
-from sklearn.model_selection import GroupKFold
+from sklearn.model_selection import GroupKFold, RandomizedSearchCV
 
 repo_root = Path(__file__).resolve().parents[1]
 if str(repo_root) not in sys.path:
@@ -27,11 +28,11 @@ if str(repo_root) not in sys.path:
 # ---------------- Paths ----------------
 ROOT_DIR = Path(__file__).resolve().parents[1]
 
-TRAINING_CSV = ROOT_DIR / "data" / "egypt" / "egypt_training_data.csv"
-CROPS_CSV = ROOT_DIR / "data" / "egypt" / "egypt_EcoCrop_DB.csv"
-INDICATORS_CSV = ROOT_DIR / "data" / "egypt" / "egypt_climate_soil_data.csv"
-MODEL_PATH = ROOT_DIR / "saved_models" / "egypt_rotation_model.joblib"
-SCORES_PATH = ROOT_DIR / "saved_models" / "egypt_model_scores.json"
+TRAINING_CSV = "data/egypt/egypt_training_data.csv"
+CROPS_CSV = "data/egypt/egypt_EcoCrop_DB.csv"
+INDICATORS_CSV = "data/egypt/egypt_climate_soil_data.csv"
+MODEL_PATH = "saved_models/egypt_rotation_model.joblib"
+SCORES_PATH = "saved_models/egypt_model_scores.json"
 
 # ---------------- Seasons ----------------
 SEASON_OF_MONTH = {
@@ -91,8 +92,6 @@ DERIVED = [
     "d_tmaxmean_tmax",
     "need_month",
     "water_gap",
-    "formula_suit",
-    "formula_deficit",
 ]
 FEATURES = ["season_is_winter", "lat", "lon"] + CLIMATE_FEATURES + CROP_PARAMS + DERIVED
 
@@ -190,6 +189,40 @@ def new_model():
     )
 
 
+def train_tuned_model(X_train, y_train):
+    print("\nTuning hyperparameters (this may take a minute)...")
+    base_model = HistGradientBoostingRegressor(loss="absolute_error", random_state=42)
+
+    param_dist = {
+        "learning_rate": uniform(0.01, 0.2),
+        "max_iter": randint(200, 1000),
+        "max_leaf_nodes": randint(31, 127),
+        "min_samples_leaf": randint(10, 50),
+        "l2_regularization": uniform(0.0, 5.0),
+    }
+
+    # Searches 20 random combinations using 3-fold cross validation
+    search = RandomizedSearchCV(
+        base_model,
+        param_distributions=param_dist,
+        n_iter=20,
+        cv=3,
+        scoring="neg_mean_absolute_error",
+        n_jobs=-1,
+        random_state=42,
+    )
+
+    search.fit(X_train, y_train)
+    print(f"Best params: {search.best_params_}")
+
+    # Calculate MAE on the entire training set using the best estimator
+    y_pred = search.predict(X_train)
+    mae = mean_absolute_error(y_train, y_pred)
+    print(f"MAE after training (Full Dataset): {mae:.2f}\n")
+
+    return search.best_estimator_
+
+
 def _scores(y_true, y_pred):
     return {
         "MAE": float(mean_absolute_error(y_true, y_pred)),
@@ -253,15 +286,9 @@ def train():
     print(
         f"deficit formula vs label  MAE={scores['deficit_formula_vs_label']['MAE']:.2f}"
     )
-    print(
-        "(labels are a formula of the features, so these scores show the model has "
-        "learned the rules, not that the rules are agronomically right)"
-    )
 
-    SCORES_PATH.parent.mkdir(parents=True, exist_ok=True)
-    SCORES_PATH.write_text(json.dumps(scores, indent=2), encoding="utf-8")
-
-    model = new_model().fit(df[available_features], y)
+    # Train the final tuned model on the entire dataset
+    model = train_tuned_model(df[available_features], y)
 
     available_climate = [
         feature for feature in CLIMATE_FEATURES if feature in df.columns
@@ -278,7 +305,7 @@ def train():
         ["lat", "lon"] + available_climate
     ].mean()
 
-    MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    # Save the best model
     joblib.dump(
         {
             "model": model,
@@ -288,7 +315,7 @@ def train():
         },
         MODEL_PATH,
     )
-    print(f"Saved {MODEL_PATH}")
+    print(f"Saved best tuned model to {MODEL_PATH}")
 
 
 # =====================================================================
