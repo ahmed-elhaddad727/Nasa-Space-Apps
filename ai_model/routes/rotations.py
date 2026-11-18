@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from config import get_settings
-from models.egypt_model import recommend, recommend_for_features
+from models.egypt_model import recommend, recommend_for_features, upcoming_seasons
 
 rotations_router = APIRouter(prefix="/rotation", tags=["Crop Rotation"])
 app_settings = get_settings()
@@ -23,11 +23,23 @@ def get_bundle(nation: str) -> dict[str, Any]:
     global _bundles
     if _bundles.get(nation) is None:
         if nation == "egypt":
-            path = app_settings.EGYPT_MODEL_PATH
+            path = Path(app_settings.EGYPT_MODEL_PATH)
         elif nation == "us":
-            path = app_settings.US_MODEL_PATH
+            path = Path(app_settings.US_MODEL_PATH)
         else:
             raise ValueError(f"Unknown nation: {nation}")
+
+        # Automatically resolve .joblib extension or parent path if config path is slightly off
+        if not path.exists() and path.with_suffix(".joblib").exists():
+            path = path.with_suffix(".joblib")
+        if not path.exists():
+            alt_path = (
+                Path(__file__).resolve().parents[1]
+                / "saved_models"
+                / f"{nation}_rotation_model.joblib"
+            )
+            if alt_path.exists():
+                path = alt_path
 
         if not path.exists():
             raise RuntimeError(f"{nation.capitalize()} model file not found at {path}")
@@ -86,7 +98,6 @@ def recommend_location(req: LocationRequest):
     loc = req.location.strip().lower()
     settings = get_settings()
 
-    # Determine nation from the config lists
     if loc in [l.lower() for l in settings.EGYPT_LOCATIONS]:
         nation = "egypt"
     elif loc in [l.lower() for l in settings.US_LOCATIONS]:
@@ -98,12 +109,26 @@ def recommend_location(req: LocationRequest):
         )
 
     bundle = get_bundle(nation)
+    clim = bundle["climatology"]
+    if loc not in set(clim["location"].str.lower()):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown location '{loc}'.",
+        )
 
     try:
-        plans = recommend(
-            bundle=bundle,  # Ensure your recommend() function accepts the bundle argument
-            location=loc,
-            start_date=req.start_date.isoformat(),
+        seasons = upcoming_seasons(req.start_date.isoformat(), n=3)
+        feats_list = []
+        for season, _, _ in seasons:
+            row = clim[
+                (clim["location"].str.lower() == loc) & (clim["season"] == season)
+            ].iloc[0]
+            feats_list.append(row.to_dict())
+
+        plans = recommend_for_features(
+            bundle=bundle,
+            seasons=seasons,
+            feats_list=feats_list,
             previous_crop=(
                 req.previous_crop.strip().lower() if req.previous_crop else None
             ),
@@ -142,8 +167,14 @@ async def recommend_coordinates(req: CoordinateRequest):
         "format": "JSON",
     }
 
+    nasa_url = getattr(
+        app_settings,
+        "NASA_POWER_URL",
+        "https://power.larc.nasa.gov/api/temporal/daily/point",
+    )
+
     async with httpx.AsyncClient(timeout=20.0) as client:
-        resp = await client.get(app_settings.NASA_POWER_URL, params=params)
+        resp = await client.get(nasa_url, params=params)
         if resp.status_code != 200:
             raise HTTPException(status_code=502, detail="NASA POWER API error")
         payload = resp.json()["properties"]["parameter"]
@@ -172,15 +203,14 @@ async def recommend_coordinates(req: CoordinateRequest):
         df.index.month.isin([11, 12, 1, 2, 3, 4]), "winter", "summer"
     )
 
-    first_season = (
-        "winter" if req.start_date.month in [11, 12, 1, 2, 3, 4] else "summer"
-    )
-    second_season = "summer" if first_season == "winter" else "winter"
-    seasons = [first_season, second_season]
+    # upcoming_seasons returns list of (season, year, label) 3-tuples required by recommend_for_features
+    seasons = upcoming_seasons(req.start_date.isoformat(), n=2)
 
     feats_list = []
-    for s in seasons:
+    for s, _, _ in seasons:
         sub = df[df["season"] == s]
+        if sub.empty:
+            sub = df
         sm_val = float(sub["sm"].mean()) if not sub.empty else 0.20
         ndvi_val = (
             req.ndvi_override
@@ -189,6 +219,8 @@ async def recommend_coordinates(req: CoordinateRequest):
         )
         feats_list.append(
             {
+                "lat": req.lat,
+                "lon": req.lon,
                 "t_mean": float(sub["t2m"].mean()),
                 "t_min_mean": float(sub["t2m_min"].mean()),
                 "t_max_mean": float(sub["t2m_max"].mean()),
@@ -213,7 +245,7 @@ async def recommend_coordinates(req: CoordinateRequest):
         return {
             "nation": nation,
             "coordinates": {"lat": req.lat, "lon": req.lon},
-            "seasons": seasons,
+            "seasons": [label for _, _, label in seasons],
             "plans": plans,
         }
     except ValueError as exc:

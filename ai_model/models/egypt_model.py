@@ -8,15 +8,10 @@ Importing this module runs nothing. Use it like this:
     print_plans(recommend("beheira_damanhur", "2026-11-17", previous_crop="wheat"))
 """
 
-from pathlib import Path
-import sys
-
-repo_root = Path(__file__).resolve().parents[3]
-if str(repo_root) not in sys.path:
-    sys.path.insert(0, str(repo_root))
 import itertools
 import json
 from pathlib import Path
+import sys
 
 import joblib
 import numpy as np
@@ -24,17 +19,13 @@ import pandas as pd
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.metrics import mean_absolute_error, r2_score
 from sklearn.model_selection import GroupKFold
-from pathlib import Path
-import sys
-from pathlib import Path
-import sys
 
-repo_root = Path(__file__).resolve().parents[3]
+repo_root = Path(__file__).resolve().parents[1]
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
 # ---------------- Paths ----------------
-ROOT_DIR = Path(__file__).resolve().parents[3]
+ROOT_DIR = Path(__file__).resolve().parents[1]
 
 TRAINING_CSV = ROOT_DIR / "data" / "egypt" / "egypt_training_data.csv"
 CROPS_CSV = ROOT_DIR / "data" / "egypt" / "egypt_EcoCrop_DB.csv"
@@ -68,9 +59,6 @@ LEGUME_BONUS = 1.10
 LEGUME_FAMILIES = {"fabaceae", "leguminosae"}
 
 TARGET = "suitability_score"
-
-import numpy as np
-import pandas as pd
 
 BASE_CLIMATE = [
     "t_mean",
@@ -407,9 +395,49 @@ def recommend_for_features(
 
     tables = []
     for (season, _, label), feats in zip(seasons, feats_list):
-        cand = candidates(score_crops(bundle, feats, season), top_n)
+        scored = score_crops(bundle, feats, season)
+        cand = candidates(scored, top_n)
         if not cand:
-            raise ValueError(f"No crop is suitable for {label} at this location.")
+            top_row = scored.sort_values("suitability", ascending=False).iloc[0]
+            top_crop = top_row["COMNAME"]
+            top_score = round(float(top_row["suitability"]), 1)
+
+            t_mean = feats.get("t_mean", 0.0)
+            t_min_abs = feats.get("t_min_abs", 0.0)
+            t_max_mean = feats.get("t_max_mean", 0.0)
+            t_max_abs = feats.get("t_max_abs", 0.0)
+            sm_mean = feats.get("sm_mean", 0.0)
+            precip = feats.get("precip_total", 0.0)
+
+            reasons = []
+            if t_mean < 10.0 or t_min_abs < -5.0:
+                reasons.append(
+                    f"severe cold stress during {label} (seasonal mean temperature is {t_mean:.1f}°C "
+                    f"with an absolute minimum of {t_min_abs:.1f}°C)"
+                )
+            if t_max_mean > 38.0 or t_max_abs > 45.0:
+                reasons.append(
+                    f"extreme heat stress during {label} (average daily high is {t_max_mean:.1f}°C "
+                    f"with peaks reaching {t_max_abs:.1f}°C)"
+                )
+            if sm_mean < 0.12:
+                reasons.append(
+                    f"critically low root-zone soil wetness ({sm_mean * 100:.0f}%) and low seasonal "
+                    f"precipitation ({precip:.1f} mm)"
+                )
+
+            if not reasons:
+                reasons.append(
+                    f"unfavorable agroclimatic balance during {label} (mean temp {t_mean:.1f}°C, "
+                    f"soil moisture {sm_mean * 100:.0f}%, seasonal rainfall {precip:.1f} mm)"
+                )
+
+            reason_str = " and ".join(reasons)
+            raise ValueError(
+                f"No crop met the minimum {MIN_SUITABILITY}% suitability threshold for {label} due to "
+                f"{reason_str}. Even the most resilient candidate ({top_crop.title()}) only reached "
+                f"{top_score}% suitability."
+            )
         tables.append(cand)
 
     out = []
