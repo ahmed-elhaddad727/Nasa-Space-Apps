@@ -30,7 +30,7 @@ export interface BackendResponse {
   unsuitable_reason?: string;
 }
 
-const BACKEND_URL = import.meta.env.API_URL;
+const BACKEND_URL = import.meta.env.VITE_API_URL;
 const STATIC_CROP_IMAGES: Record<string, string> = {
   corn: "/static/corn.jpg",
   cotton: "/static/cotton.jpg",
