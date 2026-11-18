@@ -14,6 +14,7 @@ function App() {
       <CropResults
         result={analysisData.result}
         payload={analysisData.payload}
+        autoSpeak={analysisData.autoSpeak}
         onBack={() => setAnalysisData(null)}
         lang={lang}
         onToggleLang={toggleLang}
@@ -23,7 +24,9 @@ function App() {
 
   return (
     <MapSelector
-      onComplete={(result, payload) => setAnalysisData({ result, payload })}
+      onComplete={(result, payload, autoSpeak = false) =>
+        setAnalysisData({ result, payload, autoSpeak })
+      }
       lang={lang}
       onToggleLang={toggleLang}
     />

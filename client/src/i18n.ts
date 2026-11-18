@@ -1,8 +1,12 @@
+import { BackendResponse } from './services/cropApi';
+
 export type Lang = 'en' | 'ar';
 
 export const UI_TEXT = {
   en: {
     langToggleLabel: 'العربية',
+    listen: 'Listen',
+    stopListening: 'Stop',
     mapTitle: 'What should you plant here?',
     mapSubtitle:
       "Drop a pin anywhere on Earth. We read NASA's latest weather and soil data for that spot and suggest crops that fit.",
@@ -11,14 +15,19 @@ export const UI_TEXT = {
     reset: 'Reset',
     readingLand: 'Reading the land…',
     getRecommendations: 'Get crop recommendations',
+    useMyLocation: 'Use my location',
+    locating: 'Finding your location…',
+    locationFound: 'Location found, analyzing soil and climate…',
+    geoNotSupported: 'Geolocation is not supported by your browser.',
+    geoDenied:
+      'Location permission was denied. Please allow location access or pick a spot on the map.',
+    geoUnavailable: 'Could not determine your location. Please try again.',
     fetchError:
       "Couldn't get climate data for this spot. Check your connection and try again.",
     pickAnotherSpot: '← Pick another spot',
-    suitableBadge: 'Suitable for cultivation',
-    unsuitableBadge: 'Not suitable',
     nasaHeader: 'NASA POWER Soil & Climate Analysis',
-    suitableHeadlinePrefix:
-      'According to your soil and climate, the best crop rotations: ',
+    suitableHeadline:
+      'According to your soil and climate, here are the best crops for your land',
     unsuitableHeadline:
       'This location is currently unsuitable for crop rotation',
     tempLabel: 'Temperature (2m)',
@@ -32,10 +41,11 @@ export const UI_TEXT = {
     supportedRegionsNote:
       'Supported ML regions: Egypt (21°N–32°N, 24°E–37°E) & Contiguous US (24°N–50°N, 66°W–125°W) with crop suitability ≥ 30%.',
     tryAnotherLocation: 'Try another location',
-    andJoin: ' and ',
   },
   ar: {
     langToggleLabel: 'EN',
+    listen: 'استمع',
+    stopListening: 'إيقاف',
     mapTitle: 'ماذا يجب أن تزرع هنا؟',
     mapSubtitle:
       'ضع دبوساً في أي مكان على الأرض. نقرأ أحدث بيانات الطقس والتربة من وكالة ناسا لهذه النقطة ونقترح المحاصيل الأنسب.',
@@ -44,14 +54,19 @@ export const UI_TEXT = {
     reset: 'إعادة ضبط',
     readingLand: 'جارٍ قراءة بيانات الأرض…',
     getRecommendations: 'احصل على توصيات المحاصيل',
+    useMyLocation: 'استخدم موقعي الحالي',
+    locating: 'جارٍ تحديد موقعك…',
+    locationFound: 'تم تحديد موقعك، جارٍ تحليل التربة والمناخ…',
+    geoNotSupported: 'تحديد الموقع غير مدعوم في هذا المتصفح.',
+    geoDenied:
+      'تم رفض إذن الوصول للموقع. يرجى السماح به أو اختيار نقطة على الخريطة.',
+    geoUnavailable: 'تعذر تحديد موقعك الحالي. يرجى المحاولة مرة أخرى.',
     fetchError:
       'تعذر الحصول على بيانات المناخ لهذه النقطة. تحقق من اتصالك وحاول مرة أخرى.',
     pickAnotherSpot: '→ اختر موقعاً آخر',
-    suitableBadge: 'صالح للزراعة',
-    unsuitableBadge: 'غير صالح للزراعة',
     nasaHeader: 'تحليل التربة والمناخ من NASA POWER',
-    suitableHeadlinePrefix:
-      'وفقاً لتربتك ومناخك، فإن أفضل الدورات الزراعية هي: ',
+    suitableHeadline:
+      'وفقاً لتربتك ومناخك، إليك أفضل المحاصيل المناسبة لأرضك',
     unsuitableHeadline: 'هذا الموقع غير صالح حالياً للدورة الزراعية',
     tempLabel: 'درجة الحرارة (2م)',
     soilWetnessLabel: 'رطوبة التربة',
@@ -64,7 +79,6 @@ export const UI_TEXT = {
     supportedRegionsNote:
       'المناطق المدعومة: مصر (21°–32° شمالاً، 24°–37° شرقاً) والولايات المتحدة (24°–50° شمالاً، 66°–125° غرباً) بنسبة ملاءمة ≥ 30%.',
     tryAnotherLocation: 'جرّب موقعاً آخر',
-    andJoin: ' و ',
   },
 };
 
@@ -214,4 +228,37 @@ export function translateUnsuitableReason(
   );
 
   return ar;
+}
+
+export function buildResultsSpeech(
+  result: BackendResponse,
+  lang: Lang
+): string {
+  const isSuitable =
+    result.status === 'suitable' && result.recommendations.length > 0;
+
+  if (!isSuitable) {
+    const reason = translateUnsuitableReason(result.unsuitable_reason, lang);
+    return lang === 'ar'
+      ? `هذا الموقع غير صالح حالياً للدورة الزراعية. ${reason}`
+      : `This location is currently unsuitable for crop rotation. ${reason}`;
+  }
+
+  if (lang === 'ar') {
+    const items = result.recommendations.map((item) => {
+      const crop = translateCrop(item.crop, 'ar');
+      const next = item.rotation_next
+        .split(',')
+        .map((c) => translateCrop(c.trim(), 'ar'))
+        .join(' أو ');
+      return `${crop} بنسبة ملاءمة ${item.suitability_score} بالمئة، ويزرع بعده ${next}`;
+    });
+    return `أفضل المحاصيل لأرضك هي: ${items.join('. ثم ')}.`;
+  }
+
+  const items = result.recommendations.map((item) => {
+    const next = item.rotation_next.replace(/,/g, ' or');
+    return `${item.crop} at ${item.suitability_score} percent match, followed by ${next}`;
+  });
+  return `Best crops for your land: ${items.join('. Next option: ')}.`;
 }

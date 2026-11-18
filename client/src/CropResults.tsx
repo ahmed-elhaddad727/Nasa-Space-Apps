@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { BackendResponse, NasaAgroPayload } from './services/cropApi';
 import {
   Lang,
@@ -8,13 +8,16 @@ import {
   translateSeason,
   translateNotes,
   translateUnsuitableReason,
+  buildResultsSpeech,
 } from './i18n';
+import { speak, stopSpeaking } from './utils/speech';
 
 const GRASS_IMAGE = '/grass_photo.svg';
 
 interface CropResultsProps {
   result: BackendResponse;
   payload: NasaAgroPayload;
+  autoSpeak?: boolean;
   onBack: () => void;
   lang: Lang;
   onToggleLang: () => void;
@@ -23,37 +26,50 @@ interface CropResultsProps {
 export default function CropResults({
   result,
   payload,
+  autoSpeak = false,
   onBack,
   lang,
   onToggleLang,
 }: CropResultsProps) {
-  const { latitude, longitude } = payload.coordinates;
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
   const { T2M, PRECTOTCORR, RH2M, GWETTOP } = payload.agroclimatology;
 
   const t = UI_TEXT[lang];
   const isRtl = lang === 'ar';
 
-  const latLabel = `${Math.abs(latitude).toFixed(2)}°${
-    latitude >= 0 ? 'N' : 'S'
-  }`;
-  const lonLabel = `${Math.abs(longitude).toFixed(2)}°${
-    longitude >= 0 ? 'E' : 'W'
-  }`;
+  // Auto-speak on load if triggered via "Use my location", and clean up on exit/lang switch
+  useEffect(() => {
+    stopSpeaking();
+    setIsSpeaking(false);
+
+    if (autoSpeak) {
+      const script = buildResultsSpeech(result, lang);
+      const started = speak(script, lang, () => setIsSpeaking(false));
+      if (started) {
+        setIsSpeaking(true);
+      }
+    }
+
+    return () => stopSpeaking();
+  }, [result, lang, autoSpeak]);
+
+  const handleToggleSpeech = () => {
+    if (isSpeaking) {
+      stopSpeaking();
+      setIsSpeaking(false);
+      return;
+    }
+
+    const script = buildResultsSpeech(result, lang);
+    const started = speak(script, lang, () => setIsSpeaking(false));
+    if (started) {
+      setIsSpeaking(true);
+    }
+  };
 
   const isSuitable =
     result.status === 'suitable' && result.recommendations.length > 0;
-
-  const arrow = isRtl ? '←' : '→';
-  const topRotationsText = result.recommendations
-    .slice(0, 2)
-    .map(
-      (item) =>
-        `${translateCrop(item.crop, lang)} ${arrow} ${translateRotationChain(
-          item.rotation_next,
-          lang
-        )}`
-    )
-    .join(t.andJoin);
 
   return (
     <div
@@ -76,27 +92,56 @@ export default function CropResults({
         {/* Top Bar */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
           <button
-            onClick={onBack}
+            onClick={() => {
+              stopSpeaking();
+              onBack();
+            }}
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-white/85 backdrop-blur text-sm font-semibold text-emerald-950 ring-1 ring-white/60 shadow-sm hover:bg-emerald-900 hover:text-white transition cursor-pointer"
           >
             {t.pickAnotherSpot}
           </button>
 
           <div className="flex flex-wrap items-center gap-2">
-            <span
-              dir="ltr"
-              className="px-3.5 py-1.5 rounded-full bg-white/75 backdrop-blur text-xs font-medium tabular-nums ring-1 ring-white/60"
+            {/* Listen / Stop TTS Button */}
+            <button
+              type="button"
+              onClick={handleToggleSpeech}
+              aria-pressed={isSpeaking}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold ring-1 shadow-sm transition cursor-pointer ${
+                isSpeaking
+                  ? 'bg-emerald-900 text-white ring-emerald-900'
+                  : 'bg-white/85 backdrop-blur text-emerald-950 ring-white/60 hover:bg-emerald-900 hover:text-white'
+              }`}
             >
-              {latLabel}, {lonLabel}
-            </span>
-            <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/75 backdrop-blur text-xs font-medium ring-1 ring-white/60">
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  isSuitable ? 'bg-emerald-500' : 'bg-red-500'
-                }`}
-              />
-              {isSuitable ? t.suitableBadge : t.unsuitableBadge}
-            </span>
+              {isSpeaking ? (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  className="w-3.5 h-3.5"
+                  aria-hidden="true"
+                >
+                  <rect x="6" y="6" width="12" height="12" rx="2" />
+                </svg>
+              ) : (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="w-3.5 h-3.5"
+                  aria-hidden="true"
+                >
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                  <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                  <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                </svg>
+              )}
+              <span>{isSpeaking ? t.stopListening : t.listen}</span>
+            </button>
 
             {/* Top-Right Language Switcher */}
             <button
@@ -123,23 +168,14 @@ export default function CropResults({
           </div>
         </div>
 
-        {/* Headline Statement */}
+        {/* Clean Single-Sentence Headline */}
         <header className="mb-8">
           <p className="text-xs font-semibold uppercase tracking-widest text-emerald-950/75 mb-2">
             {t.nasaHeader}
           </p>
-          {isSuitable ? (
-            <h1 className="text-3xl sm:text-4xl font-bold tracking-tight leading-snug">
-              {t.suitableHeadlinePrefix}
-              <span className="underline decoration-emerald-900/50 decoration-2 underline-offset-4 capitalize">
-                {topRotationsText}
-              </span>
-            </h1>
-          ) : (
-            <h1 className="text-3xl sm:text-4xl font-bold tracking-tight leading-snug">
-              {t.unsuitableHeadline}
-            </h1>
-          )}
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight leading-snug">
+            {isSuitable ? t.suitableHeadline : t.unsuitableHeadline}
+          </h1>
         </header>
 
         {/* NASA Telemetry Strip */}
@@ -291,7 +327,10 @@ export default function CropResults({
                     {t.supportedRegionsNote}
                   </p>
                   <button
-                    onClick={onBack}
+                    onClick={() => {
+                      stopSpeaking();
+                      onBack();
+                    }}
                     className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-emerald-900 text-white text-sm font-semibold shadow-md hover:bg-emerald-800 transition cursor-pointer"
                   >
                     {t.tryAnotherLocation}

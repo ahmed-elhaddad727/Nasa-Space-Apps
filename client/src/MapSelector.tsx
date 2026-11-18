@@ -12,7 +12,11 @@ const MIN_ZOOM = 1;
 const MAX_ZOOM = 12;
 
 interface MapSelectorProps {
-  onComplete: (result: BackendResponse, payload: NasaAgroPayload) => void;
+  onComplete: (
+    result: BackendResponse,
+    payload: NasaAgroPayload,
+    autoSpeak?: boolean
+  ) => void;
   lang: Lang;
   onToggleLang: () => void;
 }
@@ -29,7 +33,9 @@ export default function MapSelector({
   const [zoom, setZoom] = useState<number>(1);
   const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLocating, setIsLocating] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [liveAnnouncement, setLiveAnnouncement] = useState<string>('');
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const isDraggingPointerRef = useRef<boolean>(false);
@@ -109,15 +115,19 @@ export default function MapSelector({
     isPanningMapRef.current = false;
   };
 
-  const handleSelect = async () => {
+  const analyzeCoords = async (
+    targetCoords: { lat: number; lon: number },
+    autoSpeak = false
+  ) => {
     setIsLoading(true);
     setError(null);
+    setLiveAnnouncement(t.readingLand);
     try {
       const now = new Date();
       const targetDate = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
       const yyyymmdd = targetDate.toISOString().slice(0, 10).replace(/-/g, '');
 
-      const nasaUrl = `https://power.larc.nasa.gov/api/temporal/daily/point?parameters=T2M,PRECTOTCORR,RH2M,ALLSKY_SFC_SW_DWN,GWETTOP&community=AG&longitude=${coords.lon}&latitude=${coords.lat}&start=${yyyymmdd}&end=${yyyymmdd}&format=JSON`;
+      const nasaUrl = `https://power.larc.nasa.gov/api/temporal/daily/point?parameters=T2M,PRECTOTCORR,RH2M,ALLSKY_SFC_SW_DWN,GWETTOP&community=AG&longitude=${targetCoords.lon}&latitude=${targetCoords.lat}&start=${yyyymmdd}&end=${yyyymmdd}&format=JSON`;
 
       const nasaRes = await fetch(nasaUrl);
       const nasaJson = await nasaRes.json();
@@ -130,8 +140,8 @@ export default function MapSelector({
         timestamp: now.toISOString(),
         date: targetDate.toISOString().slice(0, 10),
         coordinates: {
-          latitude: coords.lat,
-          longitude: coords.lon,
+          latitude: targetCoords.lat,
+          longitude: targetCoords.lon,
         },
         agroclimatology: {
           T2M: cleanVal(params.T2M?.[yyyymmdd]),
@@ -143,13 +153,61 @@ export default function MapSelector({
       };
 
       const result = await sendAgroDataToBackend(payload);
-      onComplete(result, payload);
+      onComplete(result, payload, autoSpeak);
     } catch (err) {
       console.error('Error fetching agro data:', err);
       setError(t.fetchError);
+      setLiveAnnouncement(t.fetchError);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleSelect = () => {
+    analyzeCoords(coords, false);
+  };
+
+  const handleUseMyLocation = () => {
+    if (!navigator.geolocation) {
+      setError(t.geoNotSupported);
+      setLiveAnnouncement(t.geoNotSupported);
+      return;
+    }
+
+    setIsLocating(true);
+    setError(null);
+    setLiveAnnouncement(t.locating);
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = Number(position.coords.latitude.toFixed(4));
+        const lon = Number(position.coords.longitude.toFixed(4));
+        const newCoords = { lat, lon };
+
+        setCoords(newCoords);
+        setZoom(1);
+        setPan({ x: 0, y: 0 });
+        setIsLocating(false);
+        setLiveAnnouncement(t.locationFound);
+
+        // Immediately analyze GPS coordinates and enable auto-TTS on results
+        analyzeCoords(newCoords, true);
+      },
+      (geoErr) => {
+        setIsLocating(false);
+        const msg =
+          geoErr.code === geoErr.PERMISSION_DENIED
+            ? t.geoDenied
+            : t.geoUnavailable;
+        setError(msg);
+        setLiveAnnouncement(msg);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      }
+    );
   };
 
   const pointerLeftPct = ((coords.lon + 180) / 360) * 100;
@@ -173,6 +231,11 @@ export default function MapSelector({
       dir={isRtl ? 'rtl' : 'ltr'}
       className="relative isolate min-h-screen overflow-hidden bg-[#7DB85A] text-emerald-950 font-['Bricolage_Grotesque',ui-sans-serif,system-ui,sans-serif] px-5 py-10 sm:py-14 select-none"
     >
+      {/* Screen-reader live region */}
+      <div className="sr-only" aria-live="polite" aria-atomic="true">
+        {liveAnnouncement}
+      </div>
+
       {/* Blurred grass image background */}
       <div
         aria-hidden="true"
@@ -312,11 +375,11 @@ export default function MapSelector({
 
         <p className="mt-3 text-sm text-emerald-950/75">{t.mapHint}</p>
 
-        {/* Action */}
-        <div className="mt-6 flex flex-col sm:flex-row sm:items-center gap-3">
+        {/* Actions */}
+        <div className="mt-6 flex flex-wrap items-center gap-3">
           <button
             onClick={handleSelect}
-            disabled={isLoading}
+            disabled={isLoading || isLocating}
             className="inline-flex items-center justify-center gap-2.5 px-8 py-3.5 rounded-full bg-emerald-900 text-white text-base font-semibold shadow-lg shadow-emerald-950/25 hover:bg-emerald-800 active:scale-[0.98] transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-60 disabled:cursor-wait cursor-pointer"
           >
             {isLoading && (
@@ -324,8 +387,39 @@ export default function MapSelector({
             )}
             {isLoading ? t.readingLand : t.getRecommendations}
           </button>
+
+          <button
+            type="button"
+            onClick={handleUseMyLocation}
+            disabled={isLocating || isLoading}
+            className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full bg-white/85 backdrop-blur text-emerald-950 text-base font-semibold ring-1 ring-white/60 shadow-md shadow-emerald-950/10 hover:bg-white active:scale-[0.98] transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-60 disabled:cursor-wait cursor-pointer"
+          >
+            {isLocating ? (
+              <span className="w-4 h-4 rounded-full border-2 border-emerald-900/30 border-t-emerald-900 animate-spin motion-reduce:animate-none" />
+            ) : (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="w-4 h-4"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="3" />
+                <path d="M12 2v3" />
+                <path d="M12 19v3" />
+                <path d="M2 12h3" />
+                <path d="M19 12h3" />
+              </svg>
+            )}
+            <span>{isLocating ? t.locating : t.useMyLocation}</span>
+          </button>
+
           {error && (
-            <p role="alert" className="text-sm font-medium text-red-700">
+            <p role="alert" className="w-full text-sm font-medium text-red-700">
               {error}
             </p>
           )}
