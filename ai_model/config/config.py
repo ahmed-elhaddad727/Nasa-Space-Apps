@@ -23,10 +23,10 @@ class Settings(BaseSettings):
     START: str = "2016-01-01"
     END: str = "2025-12-31"
     ROOT_DIR: Path = Path(__file__).resolve().parents[2]
-    MODEL_PATH: Path = ROOT_DIR / "saved_models" / "rotation_model.joblib"
 
     # Egypt:
 
+    EGYPT_MODEL_PATH: Path = ROOT_DIR / "saved_models" / "egypt_rotation_model"
     EGYPTAIN_CROP_LIST: ClassVar[list[str]] = [
         "wheat",
         "maize",
@@ -104,8 +104,9 @@ class Settings(BaseSettings):
         10: "summer",
     }
     EGYPTAIN_MIN_SEASON_COVERAGE: ClassVar[float] = 0.8
-    
+
     # US
+    US_MODEL_PATH: Path = ROOT_DIR / "saved_models" / "us_rotation_model"
     US_CROP_LIST: ClassVar[list[str]] = [
         # --- Major Row Crops & Grains ---
         "corn",
