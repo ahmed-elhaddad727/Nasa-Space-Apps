@@ -67,7 +67,8 @@ export async function sendAgroDataToBackend(
       lon: payload.coordinates.longitude,
       start_date: payload.date,
       previous_crop: null,
-      top_k: 3,
+      // Fetch top 12 combos so merging duplicate starting crops still yields distinct options
+      top_k: 12,
     }),
   });
 
@@ -86,7 +87,6 @@ export async function sendAgroDataToBackend(
       if (errText) reason = errText;
     }
 
-    // Return a clean 'unsuitable' state with the exact backend explanation
     return {
       status: 'unsuitable',
       location_summary: `Lat ${payload.coordinates.latitude.toFixed(
@@ -100,34 +100,78 @@ export async function sendAgroDataToBackend(
   const data = await response.json();
 
   if (Array.isArray(data.plans) && data.plans.length > 0) {
-    const recommendations: CropRecommendation[] = data.plans.map(
-      (planObj: any) => {
-        const steps = planObj.plan || [];
-        const first = steps[0] || {};
-        const second = steps[1] || {};
-        const third = steps[2];
+    const groupedMap = new Map<
+      string,
+      {
+        crop: string;
+        suitability_score: number;
+        season: string;
+        nextOptions: string[];
+        notes: string;
+        image_url?: string;
+      }
+    >();
 
-        const nextCrops = [second.crop, third?.crop]
-          .filter(Boolean)
-          .join(' → ');
-        const cropName = first.crop || 'wheat';
+    for (const planObj of data.plans) {
+      const steps = planObj.plan || [];
+      const first = steps[0] || {};
+      const second = steps[1] || {};
+      const third = steps[2];
 
-        return {
+      const cropName = (first.crop || 'wheat').trim();
+      const cropKey = cropName.toLowerCase();
+
+      const nextChain = [second.crop, third?.crop]
+        .filter(Boolean)
+        .map((c: string) => c.trim())
+        .join(' → ');
+
+      if (!groupedMap.has(cropKey)) {
+        groupedMap.set(cropKey, {
           crop: cropName,
           suitability_score: Math.round(
             first.suitability ?? planObj.score ?? 90
           ),
           season: first.season || (data.seasons?.[0] ?? 'Winter'),
-          rotation_next: nextCrops || 'maize',
-          notes: `Rotation score: ${planObj.score}/100. Unmet water need: ${
+          nextOptions: nextChain ? [nextChain] : [],
+          notes: `Top rotation score: ${planObj.score}/100. Unmet water need: ${
             first.water_need_unmet_pct ?? 0
           }% (irrigation deficit: ${
             first.avg_monthly_irrigation_deficit_mm ?? 0
           } mm/mo).`,
           image_url: getCropImageUrl(cropName),
-        };
+        });
+      } else {
+        const existing = groupedMap.get(cropKey)!;
+        // Merge distinct follow-up rotation crops with a comma (up to 3 options per card)
+        if (
+          nextChain &&
+          !existing.nextOptions.some(
+            (opt) => opt.toLowerCase() === nextChain.toLowerCase()
+          ) &&
+          existing.nextOptions.length < 3
+        ) {
+          existing.nextOptions.push(nextChain);
+        }
       }
-    );
+    }
+
+    // Take up to 3 distinct starting crop cards
+    const recommendations: CropRecommendation[] = Array.from(
+      groupedMap.values()
+    )
+      .slice(0, 3)
+      .map((group) => ({
+        crop: group.crop,
+        suitability_score: group.suitability_score,
+        season: group.season,
+        rotation_next:
+          group.nextOptions.length > 0
+            ? group.nextOptions.join(', ')
+            : 'maize',
+        notes: group.notes,
+        image_url: group.image_url,
+      }));
 
     return {
       status: 'suitable',

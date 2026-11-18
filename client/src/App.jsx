@@ -5,6 +5,9 @@ import CropResults from './CropResults'
 
 function App() {
   const [analysisData, setAnalysisData] = useState(null)
+  const [lang, setLang] = useState('en')
+
+  const toggleLang = () => setLang((prev) => (prev === 'en' ? 'ar' : 'en'))
 
   if (analysisData) {
     return (
@@ -12,6 +15,8 @@ function App() {
         result={analysisData.result}
         payload={analysisData.payload}
         onBack={() => setAnalysisData(null)}
+        lang={lang}
+        onToggleLang={toggleLang}
       />
     )
   }
@@ -19,6 +24,8 @@ function App() {
   return (
     <MapSelector
       onComplete={(result, payload) => setAnalysisData({ result, payload })}
+      lang={lang}
+      onToggleLang={toggleLang}
     />
   )
 }

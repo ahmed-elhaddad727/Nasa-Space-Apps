@@ -4,6 +4,7 @@ import {
   NasaAgroPayload,
   BackendResponse,
 } from './services/cropApi';
+import { Lang, UI_TEXT } from './i18n';
 
 const GRASS_IMAGE = '/grass_photo.svg';
 
@@ -12,9 +13,15 @@ const MAX_ZOOM = 12;
 
 interface MapSelectorProps {
   onComplete: (result: BackendResponse, payload: NasaAgroPayload) => void;
+  lang: Lang;
+  onToggleLang: () => void;
 }
 
-export default function MapSelector({ onComplete }: MapSelectorProps) {
+export default function MapSelector({
+  onComplete,
+  lang,
+  onToggleLang,
+}: MapSelectorProps) {
   const [coords, setCoords] = useState<{ lat: number; lon: number }>({
     lat: 30.47,
     lon: 31.04,
@@ -28,6 +35,9 @@ export default function MapSelector({ onComplete }: MapSelectorProps) {
   const isDraggingPointerRef = useRef<boolean>(false);
   const isPanningMapRef = useRef<boolean>(false);
   const panStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  const t = UI_TEXT[lang];
+  const isRtl = lang === 'ar';
 
   useEffect(() => {
     const handleContextMenu = (e: MouseEvent) => e.preventDefault();
@@ -136,9 +146,7 @@ export default function MapSelector({ onComplete }: MapSelectorProps) {
       onComplete(result, payload);
     } catch (err) {
       console.error('Error fetching agro data:', err);
-      setError(
-        "Couldn't get climate data for this spot. Check your connection and try again."
-      );
+      setError(t.fetchError);
     } finally {
       setIsLoading(false);
     }
@@ -161,7 +169,10 @@ export default function MapSelector({ onComplete }: MapSelectorProps) {
     'bg-white/90 backdrop-blur rounded-full shadow-md shadow-emerald-950/10 text-xs font-medium text-emerald-950';
 
   return (
-    <div className="relative isolate min-h-screen overflow-hidden bg-[#7DB85A] text-emerald-950 font-['Bricolage_Grotesque',ui-sans-serif,system-ui,sans-serif] px-5 py-10 sm:py-14 select-none">
+    <div
+      dir={isRtl ? 'rtl' : 'ltr'}
+      className="relative isolate min-h-screen overflow-hidden bg-[#7DB85A] text-emerald-950 font-['Bricolage_Grotesque',ui-sans-serif,system-ui,sans-serif] px-5 py-10 sm:py-14 select-none"
+    >
       {/* Blurred grass image background */}
       <div
         aria-hidden="true"
@@ -175,19 +186,44 @@ export default function MapSelector({ onComplete }: MapSelectorProps) {
       </div>
 
       <div className="mx-auto w-full max-w-4xl">
+        {/* Top-Right Language Switcher */}
+        <div className="flex justify-end mb-4">
+          <button
+            onClick={onToggleLang}
+            aria-label="Switch language"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/85 backdrop-blur text-xs sm:text-sm font-semibold text-emerald-950 ring-1 ring-white/60 shadow-sm hover:bg-emerald-900 hover:text-white transition cursor-pointer"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="w-4 h-4"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
+              <path d="M2 12h20" />
+            </svg>
+            <span>{t.langToggleLabel}</span>
+          </button>
+        </div>
+
         {/* Header */}
         <header className="mb-8">
           <h1 className="text-4xl sm:text-5xl font-bold tracking-tight">
-            What should you plant here?
+            {t.mapTitle}
           </h1>
           <p className="mt-3 text-base sm:text-lg text-emerald-950/80 max-w-xl">
-            Drop a pin anywhere on Earth. We read NASA's latest weather and soil
-            data for that spot and suggest crops that fit.
+            {t.mapSubtitle}
           </p>
         </header>
 
-        {/* Map */}
+        {/* Map (keep LTR internally so X/Y coordinate math stays identical) */}
         <div
+          dir="ltr"
           ref={mapContainerRef}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
@@ -269,15 +305,12 @@ export default function MapSelector({ onComplete }: MapSelectorProps) {
               }}
               className="ml-1 px-2.5 h-7 rounded-full border-l border-emerald-950/15 hover:bg-emerald-950/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-700 cursor-pointer"
             >
-              Reset
+              {t.reset}
             </button>
           </div>
         </div>
 
-        <p className="mt-3 text-sm text-emerald-950/75">
-          Click or drag to place the pin. Scroll to zoom, right-click and drag
-          to move the map.
-        </p>
+        <p className="mt-3 text-sm text-emerald-950/75">{t.mapHint}</p>
 
         {/* Action */}
         <div className="mt-6 flex flex-col sm:flex-row sm:items-center gap-3">
@@ -289,7 +322,7 @@ export default function MapSelector({ onComplete }: MapSelectorProps) {
             {isLoading && (
               <span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin motion-reduce:animate-none" />
             )}
-            {isLoading ? 'Reading the land…' : 'Get crop recommendations'}
+            {isLoading ? t.readingLand : t.getRecommendations}
           </button>
           {error && (
             <p role="alert" className="text-sm font-medium text-red-700">
