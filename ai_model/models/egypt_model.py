@@ -28,9 +28,9 @@ if str(repo_root) not in sys.path:
 # ---------------- Paths ----------------
 ROOT_DIR = Path(__file__).resolve().parents[1]
 
-TRAINING_CSV = "data/egypt/egypt_training_data.csv"
-CROPS_CSV = "data/egypt/egypt_EcoCrop_DB.csv"
-INDICATORS_CSV = "data/egypt/egypt_climate_soil_data.csv"
+TRAINING_CSV = "/data/egypt/egypt_training_data.csv"
+CROPS_CSV = "/data/egypt/egypt_EcoCrop_DB.csv"
+INDICATORS_CSV = "/data/egypt/egypt_climate_soil_data.csv"
 MODEL_PATH = "saved_models/egypt_rotation_model.joblib"
 SCORES_PATH = "saved_models/egypt_model_scores.json"
 
@@ -213,14 +213,26 @@ def train_tuned_model(X_train, y_train):
     )
 
     search.fit(X_train, y_train)
-    print(f"Best params: {search.best_params_}")
+    clean_params = {
+        k: (v.item() if hasattr(v, "item") else v)
+        for k, v in search.best_params_.items()
+    }
+    print(f"Best params: {clean_params}")
 
-    # Calculate MAE on the entire training set using the best estimator
-    y_pred = search.predict(X_train)
-    mae = mean_absolute_error(y_train, y_pred)
+    # Calculate MAE & R2 on the entire training set using the best estimator
+    y_pred = np.clip(search.predict(X_train), 0, 100)
+    mae = float(mean_absolute_error(y_train, y_pred))
+    r2 = float(r2_score(y_train, y_pred))
     print(f"MAE after training (Full Dataset): {mae:.2f}\n")
 
-    return search.best_estimator_
+    tuning_metrics = {
+        "best_params": clean_params,
+        "cv_MAE": float(-search.best_score_),
+        "train_MAE": mae,
+        "train_R2": r2,
+    }
+
+    return search.best_estimator_, tuning_metrics
 
 
 def _scores(y_true, y_pred):
@@ -288,7 +300,14 @@ def train():
     )
 
     # Train the final tuned model on the entire dataset
-    model = train_tuned_model(df[available_features], y)
+    model, tuning_metrics = train_tuned_model(df[available_features], y)
+    scores["tuned_model"] = tuning_metrics
+
+    # Save scores to JSON
+    scores_file = Path(SCORES_PATH)
+    scores_file.parent.mkdir(parents=True, exist_ok=True)
+    scores_file.write_text(json.dumps(scores, indent=2), encoding="utf-8")
+    print(f"Saved model scores to {scores_file}")
 
     available_climate = [
         feature for feature in CLIMATE_FEATURES if feature in df.columns
@@ -306,6 +325,8 @@ def train():
     ].mean()
 
     # Save the best model
+    model_file = Path(MODEL_PATH)
+    model_file.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(
         {
             "model": model,
@@ -313,9 +334,9 @@ def train():
             "crops": crops,
             "climatology": climatology,
         },
-        MODEL_PATH,
+        model_file,
     )
-    print(f"Saved best tuned model to {MODEL_PATH}")
+    print(f"Saved best tuned model to {model_file}")
 
 
 # =====================================================================
