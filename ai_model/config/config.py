@@ -22,6 +22,9 @@ class Settings(BaseSettings):
 
     START: str = "2016-01-01"
     END: str = "2025-12-31"
+    ROOT_DIR: Path = Path(__file__).resolve().parents[2]
+    MODEL_PATH: Path = ROOT_DIR / "saved_models" / "rotation_model.joblib"
+
     # Egypt:
 
     EGYPTAIN_CROP_LIST: ClassVar[list[str]] = [

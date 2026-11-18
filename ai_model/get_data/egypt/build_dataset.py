@@ -9,7 +9,7 @@ from ai_model.config import get_settings
 
 app_settings = get_settings()
 from ai_model.helpers import build
-from ai_model.server.models.egypt_model import SEASON_DAYS
+from ai_model.models.egypt_model import SEASON_DAYS
 
 build(
     app_settings.EGYPTAIN_SEASON_OF_MONTH,

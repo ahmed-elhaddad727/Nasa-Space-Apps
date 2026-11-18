@@ -15,7 +15,7 @@ app_settings = get_settings()
 
 import numpy as np
 import pandas as pd
-from ai_model.server.models.egypt_model import CROPS_CSV, INDICATORS_CSV, SEASON_OF_MONTH
+from ai_model.models.egypt_model import CROPS_CSV, INDICATORS_CSV, SEASON_OF_MONTH
 
 
 def add_season(df, SEASON_OF_MONTH, date_col="date"):
