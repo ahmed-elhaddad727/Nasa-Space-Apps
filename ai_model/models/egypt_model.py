@@ -16,7 +16,7 @@ import sys
 import joblib
 import numpy as np
 import pandas as pd
-from scipy.stats import uniform, randint
+from scipy.stats import randint, uniform
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.metrics import mean_absolute_error, r2_score
 from sklearn.model_selection import GroupKFold, RandomizedSearchCV
@@ -28,9 +28,9 @@ if str(repo_root) not in sys.path:
 # ---------------- Paths ----------------
 ROOT_DIR = Path(__file__).resolve().parents[1]
 
-TRAINING_CSV = "/data/egypt/egypt_training_data.csv"
-CROPS_CSV = "/data/egypt/egypt_EcoCrop_DB.csv"
-INDICATORS_CSV = "/data/egypt/egypt_climate_soil_data.csv"
+TRAINING_CSV = "data/egypt/egypt_training_data.csv"
+CROPS_CSV = "data/egypt/egypt_EcoCrop_DB.csv"
+INDICATORS_CSV = "data/egypt/egypt_climate_soil_data.csv"
 MODEL_PATH = "saved_models/egypt_rotation_model.joblib"
 SCORES_PATH = "saved_models/egypt_model_scores.json"
 
@@ -163,7 +163,7 @@ def load_crops():
     keep = ["COMNAME", "FAMNAME"] + CROP_PARAMS
     crops = crops[[c for c in keep if c in crops.columns]].copy()
     if "FAMNAME" not in crops.columns:
-        crops["FAMNAME"] = crops["COMNAME"]  # no family info: no family rule
+        crops["FAMNAME"] = crops["COMNAME"]
     crops["FAMNAME"] = crops["FAMNAME"].fillna(crops["COMNAME"]).astype(str).str.lower()
 
     for c in CROP_PARAMS:
@@ -176,21 +176,24 @@ def load_crops():
 
 
 # =====================================================================
-# Training
+# Training & Hyperparameter Tuning
 # =====================================================================
-def new_model():
-    return HistGradientBoostingRegressor(
-        loss="absolute_error",
-        max_iter=600,
-        learning_rate=0.05,
-        max_leaf_nodes=63,
-        l2_regularization=1.0,
-        random_state=42,
-    )
+def new_model(params=None):
+    defaults = {
+        "loss": "absolute_error",
+        "max_iter": 600,
+        "learning_rate": 0.05,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 1.0,
+        "random_state": 42,
+    }
+    if params:
+        defaults.update(params)
+    return HistGradientBoostingRegressor(**defaults)
 
 
-def train_tuned_model(X_train, y_train):
-    print("\nTuning hyperparameters (this may take a minute)...")
+def train_tuned_model(X_train, y_train, n_iter=20, cv=3):
+    print("\nTuning hyperparameters with RandomizedSearchCV...")
     base_model = HistGradientBoostingRegressor(loss="absolute_error", random_state=42)
 
     param_dist = {
@@ -201,12 +204,11 @@ def train_tuned_model(X_train, y_train):
         "l2_regularization": uniform(0.0, 5.0),
     }
 
-    # Searches 20 random combinations using 3-fold cross validation
     search = RandomizedSearchCV(
         base_model,
         param_distributions=param_dist,
-        n_iter=20,
-        cv=3,
+        n_iter=n_iter,
+        cv=cv,
         scoring="neg_mean_absolute_error",
         n_jobs=-1,
         random_state=42,
@@ -219,11 +221,10 @@ def train_tuned_model(X_train, y_train):
     }
     print(f"Best params: {clean_params}")
 
-    # Calculate MAE & R2 on the entire training set using the best estimator
     y_pred = np.clip(search.predict(X_train), 0, 100)
     mae = float(mean_absolute_error(y_train, y_pred))
     r2 = float(r2_score(y_train, y_pred))
-    print(f"MAE after training (Full Dataset): {mae:.2f}\n")
+    print(f"Tuned CV MAE: {-search.best_score_:.2f} | Full-Dataset MAE: {mae:.2f}\n")
 
     tuning_metrics = {
         "best_params": clean_params,
@@ -231,7 +232,6 @@ def train_tuned_model(X_train, y_train):
         "train_MAE": mae,
         "train_R2": r2,
     }
-
     return search.best_estimator_, tuning_metrics
 
 
@@ -259,14 +259,18 @@ def train():
         f"{df['COMNAME'].nunique()} crops | {df['season_year'].nunique()} season-years"
     )
 
-    scores = {}
+    # Tune hyperparameters first and refit on the full dataset
+    model, tuning_metrics = train_tuned_model(df[available_features], y)
+    best_params = tuning_metrics["best_params"]
+
+    scores = {"tuned_model": tuning_metrics}
 
     df["period"] = df["season_year"] * 2 + df["season_is_winter"]
     periods = sorted(df["period"].unique())
     if len(periods) >= 6:
         test = df["period"] >= periods[-2]
 
-        m = new_model().fit(df.loc[~test, available_features], y[~test])
+        m = new_model(best_params).fit(df.loc[~test, available_features], y[~test])
         pred = np.clip(m.predict(df.loc[test, available_features]), 0, 100)
         scores["suitability_time_split"] = _scores(y[test], pred)
         scores["suitability_formula_on_seasonal_means"] = _scores(
@@ -284,7 +288,7 @@ def train():
     if n_groups >= 2:
         oof = np.zeros(len(df))
         for tr, te in GroupKFold(n_splits=n_groups).split(df, groups=df["location"]):
-            mm = new_model().fit(df.iloc[tr][available_features], y.iloc[tr])
+            mm = new_model(best_params).fit(df.iloc[tr][available_features], y.iloc[tr])
             oof[te] = np.clip(mm.predict(df.iloc[te][available_features]), 0, 100)
         scores["suitability_location_split"] = _scores(y, oof)
         print(
@@ -299,11 +303,6 @@ def train():
         f"deficit formula vs label  MAE={scores['deficit_formula_vs_label']['MAE']:.2f}"
     )
 
-    # Train the final tuned model on the entire dataset
-    model, tuning_metrics = train_tuned_model(df[available_features], y)
-    scores["tuned_model"] = tuning_metrics
-
-    # Save scores to JSON
     scores_file = Path(SCORES_PATH)
     scores_file.parent.mkdir(parents=True, exist_ok=True)
     scores_file.write_text(json.dumps(scores, indent=2), encoding="utf-8")
@@ -324,7 +323,6 @@ def train():
         ["lat", "lon"] + available_climate
     ].mean()
 
-    # Save the best model
     model_file = Path(MODEL_PATH)
     model_file.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(
@@ -425,6 +423,31 @@ def best_rotations(season_tables, prev_crop=None, prev_family=None, top_k=5):
     return results[:top_k]
 
 
+def _resolve_crop(crops_df, query):
+    """Matches a user crop name against primary names and comma-separated EcoCrop aliases."""
+    q = query.strip().lower()
+    fam = crops_df.set_index("COMNAME")["FAMNAME"]
+
+    # 1. Exact full COMNAME match
+    if q in fam.index:
+        return q, fam[q]
+
+    # 2. Exact match on primary name (first entry before comma)
+    for comname, family in fam.items():
+        aliases = [a.strip() for a in str(comname).split(",")]
+        if aliases and aliases[0] == q:
+            return comname, family
+
+    # 3. Exact match on any comma-separated alias (e.g. "corn" -> "maize, corn, ...")
+    for comname, family in fam.items():
+        aliases = [a.strip() for a in str(comname).split(",")]
+        if q in aliases:
+            return comname, family
+
+    primary_names = sorted({str(c).split(",")[0].strip() for c in fam.index})
+    raise ValueError(f"Unknown previous crop '{query}'. Known crops: {primary_names}")
+
+
 def recommend_for_features(
     bundle, seasons, feats_list, previous_crop=None, top_n=12, top_k=5
 ):
@@ -432,15 +455,7 @@ def recommend_for_features(
     (use this from your web backend for any map point)."""
     prev_family = None
     if previous_crop:
-        previous_crop = previous_crop.lower()
-        fam = bundle["crops"].set_index("COMNAME")["FAMNAME"]
-        if previous_crop not in fam.index:
-            raise ValueError(
-                f"Unknown previous crop '{previous_crop}'. "
-                f"Known crops: {sorted(fam.index)}"
-            )
-        prev_family = fam[previous_crop]
-
+        previous_crop, prev_family = _resolve_crop(bundle["crops"], previous_crop)
     tables = []
     for (season, _, label), feats in zip(seasons, feats_list):
         scored = score_crops(bundle, feats, season)
