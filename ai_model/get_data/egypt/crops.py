@@ -1,8 +1,14 @@
-import pandas as pd
+from pathlib import Path
+import sys
 
-df = pd.read_csv("data/EcoCrop_DB.csv", encoding="latin-1")
+repo_root = Path(__file__).resolve().parents[3]
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
 
-# commmon corps in Egypt
+from ai_model.helpers.get_crops import extract_crops
+
+# common crops in Egypt
+
 egyptian_crops_list = [
     "wheat",
     "maize",
@@ -31,16 +37,4 @@ egyptian_crops_list = [
     "sunflower",
 ]
 
-# make the crop name in lower case
-column_name = "COMNAME"
-df[column_name] = df[column_name].astype(str).str.lower()
-
-# search for egyption crops
-egypt_df = df[df[column_name].str.contains("|".join(egyptian_crops_list), na=False)]
-# remove duplicates
-egypt_df = egypt_df.drop_duplicates(subset=[column_name])
-# save the file
-egypt_df.to_csv("Egypt_EcoCrop_DB.csv", index=False, encoding="utf-8-sig")
-egypt_df.to_json("Egypt_EcoCrop_DB.json", index=False)
-
-print('file was saved')
+extract_crops(crops_list=egyptian_crops_list, region="egypt")
