@@ -6,7 +6,7 @@ import {
 } from './services/cropApi';
 import { Lang, UI_TEXT } from './i18n';
 
-const GRASS_IMAGE = '/grass_photo.svg';
+const BG_IMAGE = '/IMG-20261120-WA0139.jpg';
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 12;
@@ -190,7 +190,6 @@ export default function MapSelector({
         setIsLocating(false);
         setLiveAnnouncement(t.locationFound);
 
-        // Immediately analyze GPS coordinates and enable auto-TTS on results
         analyzeCoords(newCoords, true);
       },
       (geoErr) => {
@@ -223,38 +222,72 @@ export default function MapSelector({
     coords.lon >= 0 ? 'E' : 'W'
   }`;
 
-  const pill =
-    'bg-white/90 backdrop-blur rounded-full shadow-md shadow-emerald-950/10 text-xs font-medium text-emerald-950';
-
   return (
     <div
       dir={isRtl ? 'rtl' : 'ltr'}
-      className="relative isolate min-h-screen overflow-hidden bg-[#7DB85A] text-emerald-950 font-['Bricolage_Grotesque',ui-sans-serif,system-ui,sans-serif] px-5 py-10 sm:py-14 select-none"
+      className="relative isolate min-h-screen flex flex-col justify-between overflow-hidden bg-[#0b1f14] text-white font-['Bricolage_Grotesque',ui-sans-serif,system-ui,sans-serif] select-none"
     >
       {/* Screen-reader live region */}
       <div className="sr-only" aria-live="polite" aria-atomic="true">
         {liveAnnouncement}
       </div>
 
-      {/* Blurred grass image background */}
+      {/* Full-bleed background image + readability gradient */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 -z-10"
+        className="pointer-events-none fixed inset-0 -z-20"
       >
         <div
-          style={{ backgroundImage: `url('${GRASS_IMAGE}')` }}
-          className="absolute inset-0 bg-cover bg-center blur-[2px] scale-105"
+          style={{ backgroundImage: `url('${BG_IMAGE}')` }}
+          className="absolute inset-0 bg-cover bg-center"
         />
-        <div className="absolute inset-0 bg-emerald-900/20" />
+        <div className="absolute inset-0 bg-gradient-to-b from-[#0b1f2e]/75 via-black/45 to-[#06140c]/90" />
       </div>
 
-      <div className="mx-auto w-full max-w-4xl">
-        {/* Top-Right Language Switcher */}
-        <div className="flex justify-end mb-4">
+      {/* Main Content Column */}
+      <main className="relative z-10 mx-auto w-full max-w-lg sm:max-w-xl px-5 pt-7 pb-28">
+        {/* Top Bar: NASA Space Apps + Language Pill */}
+        <div className="flex items-center justify-between gap-4 mb-10">
+          <div className="flex items-center gap-3">
+            {/* Inline NASA Meatball Badge */}
+            <svg
+              viewBox="0 0 110 92"
+              className="w-11 h-9 flex-shrink-0 drop-shadow"
+              aria-label="NASA"
+            >
+              <circle cx="52" cy="46" r="38" fill="#0B3D91" />
+              <path
+                d="M15 62 C 35 45, 72 22, 99 17 C 80 34, 48 56, 26 70 Z"
+                fill="#FC3D21"
+              />
+              <text
+                x="52"
+                y="54"
+                textAnchor="middle"
+                fill="#FFFFFF"
+                fontSize="21"
+                fontWeight="800"
+                fontFamily="system-ui, sans-serif"
+                letterSpacing="1"
+              >
+                NASA
+              </text>
+            </svg>
+            <div className="h-8 w-px bg-white/40" />
+            <div className="leading-tight">
+              <div className="text-sm font-bold tracking-wide text-white">
+                NASA
+              </div>
+              <div className="text-xs font-medium text-white/80">
+                Space Apps
+              </div>
+            </div>
+          </div>
+
           <button
             onClick={onToggleLang}
             aria-label="Switch language"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/85 backdrop-blur text-xs sm:text-sm font-semibold text-emerald-950 ring-1 ring-white/60 shadow-sm hover:bg-emerald-900 hover:text-white transition cursor-pointer"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/15 backdrop-blur-md text-xs sm:text-sm font-semibold text-white border border-white/45 shadow-sm hover:bg-white/25 transition cursor-pointer"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -274,17 +307,18 @@ export default function MapSelector({
           </button>
         </div>
 
-        {/* Header */}
+        {/* Hero Headline */}
         <header className="mb-8">
-          <h1 className="text-4xl sm:text-5xl font-bold tracking-tight">
+          <h1 className="text-4xl sm:text-5xl font-bold tracking-tight leading-[1.1] text-white drop-shadow-sm">
             {t.mapTitle}
           </h1>
-          <p className="mt-3 text-base sm:text-lg text-emerald-950/80 max-w-xl">
+          <div className="mt-4 mb-4 h-1 w-12 rounded-full bg-[#6AB04C]" />
+          <p className="text-sm sm:text-base leading-relaxed text-white/90 max-w-md">
             {t.mapSubtitle}
           </p>
         </header>
 
-        {/* Map (keep LTR internally so X/Y coordinate math stays identical) */}
+        {/* Interactive Map Card */}
         <div
           dir="ltr"
           ref={mapContainerRef}
@@ -292,7 +326,7 @@ export default function MapSelector({
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
-          className="relative w-full aspect-[2/1] rounded-3xl overflow-hidden cursor-crosshair bg-emerald-950/10 ring-1 ring-emerald-950/15 shadow-xl shadow-emerald-950/15"
+          className="relative w-full aspect-[16/9] rounded-2xl overflow-hidden cursor-crosshair bg-[#040d18] border border-white/40 shadow-2xl shadow-black/50"
         >
           <div
             style={{
@@ -309,7 +343,7 @@ export default function MapSelector({
               className="w-full h-full object-cover pointer-events-none"
             />
 
-            {/* Pin */}
+            {/* Glowing Pin */}
             <div
               style={{
                 left: `${pointerLeftPct}%`,
@@ -318,25 +352,25 @@ export default function MapSelector({
               }}
               className="absolute w-6 h-6 pointer-events-none"
             >
-              <span className="absolute inset-0 rounded-full bg-amber-300/70 animate-ping motion-reduce:animate-none" />
+              <span className="absolute inset-0 rounded-full bg-amber-300/75 animate-ping motion-reduce:animate-none" />
               <span className="absolute inset-1 rounded-full bg-amber-400 border-2 border-white shadow-lg" />
             </div>
           </div>
 
-          {/* Coordinates */}
+          {/* Floating Coordinates Pill */}
           <div
             onMouseDown={(e) => e.stopPropagation()}
-            className={`absolute bottom-3 left-3 px-3.5 py-1.5 ${pill}`}
+            className="absolute bottom-2.5 left-2.5 px-3.5 py-1.5 rounded-full bg-white text-[#0f291e] text-xs font-semibold shadow-md"
           >
             <span className="tabular-nums">
               {latLabel}, {lonLabel}
             </span>
           </div>
 
-          {/* Zoom controls */}
+          {/* Floating Zoom Toolbar */}
           <div
             onMouseDown={(e) => e.stopPropagation()}
-            className={`absolute bottom-3 right-3 flex items-center gap-1 px-1.5 py-1 ${pill}`}
+            className="absolute bottom-2.5 right-2.5 flex items-center gap-1 px-2 py-1 rounded-full bg-white text-[#0f291e] text-xs font-semibold shadow-md"
           >
             <button
               aria-label="Zoom in"
@@ -345,11 +379,11 @@ export default function MapSelector({
                   Math.min(MAX_ZOOM, Number((z * 1.25).toFixed(2)))
                 )
               }
-              className="w-7 h-7 rounded-full text-base leading-none hover:bg-emerald-950/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-700 cursor-pointer"
+              className="w-6 h-6 rounded-full text-sm leading-none hover:bg-black/10 cursor-pointer"
             >
               +
             </button>
-            <span className="w-10 text-center tabular-nums">
+            <span className="w-9 text-center tabular-nums">
               {zoom.toFixed(1)}x
             </span>
             <button
@@ -357,7 +391,7 @@ export default function MapSelector({
               onClick={() =>
                 setZoom((z) => Math.max(MIN_ZOOM, Number((z * 0.8).toFixed(2))))
               }
-              className="w-7 h-7 rounded-full text-base leading-none hover:bg-emerald-950/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-700 cursor-pointer"
+              className="w-6 h-6 rounded-full text-sm leading-none hover:bg-black/10 cursor-pointer"
             >
               −
             </button>
@@ -366,36 +400,43 @@ export default function MapSelector({
                 setZoom(1);
                 setPan({ x: 0, y: 0 });
               }}
-              className="ml-1 px-2.5 h-7 rounded-full border-l border-emerald-950/15 hover:bg-emerald-950/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-700 cursor-pointer"
+              className="ml-0.5 pl-2 pr-1.5 h-6 border-l border-black/15 hover:text-[#0b5d3b] cursor-pointer"
             >
               {t.reset}
             </button>
           </div>
         </div>
 
-        <p className="mt-3 text-sm text-emerald-950/75">{t.mapHint}</p>
+        {/* Helper Hint with Hand Icon */}
+        <div className="mt-3.5 flex items-start gap-2.5 text-xs sm:text-sm text-white/85">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="w-5 h-5 flex-shrink-0 mt-0.5 text-white/90"
+            aria-hidden="true"
+          >
+            <path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2" />
+            <path d="M14 10V4a2 2 0 0 0-2-2 2 2 0 0 0-2 2v2" />
+            <path d="M10 10.5V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v8" />
+            <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
+          </svg>
+          <p className="leading-snug">{t.mapHint}</p>
+        </div>
 
-        {/* Actions */}
-        <div className="mt-6 flex flex-wrap items-center gap-3">
+        {/* Stacked Full-Width Action Buttons */}
+        <div className="mt-7 flex flex-col gap-3.5">
           <button
             onClick={handleSelect}
             disabled={isLoading || isLocating}
-            className="inline-flex items-center justify-center gap-2.5 px-8 py-3.5 rounded-full bg-emerald-900 text-white text-base font-semibold shadow-lg shadow-emerald-950/25 hover:bg-emerald-800 active:scale-[0.98] transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-60 disabled:cursor-wait cursor-pointer"
+            className="w-full inline-flex items-center justify-center gap-2.5 px-6 py-4 rounded-full bg-[#0b5d3b] text-white text-base font-semibold shadow-lg shadow-black/35 hover:bg-[#0e7047] active:scale-[0.99] transition disabled:opacity-60 disabled:cursor-wait cursor-pointer"
           >
-            {isLoading && (
+            {isLoading ? (
               <span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin motion-reduce:animate-none" />
-            )}
-            {isLoading ? t.readingLand : t.getRecommendations}
-          </button>
-
-          <button
-            type="button"
-            onClick={handleUseMyLocation}
-            disabled={isLocating || isLoading}
-            className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full bg-white/85 backdrop-blur text-emerald-950 text-base font-semibold ring-1 ring-white/60 shadow-md shadow-emerald-950/10 hover:bg-white active:scale-[0.98] transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-60 disabled:cursor-wait cursor-pointer"
-          >
-            {isLocating ? (
-              <span className="w-4 h-4 rounded-full border-2 border-emerald-900/30 border-t-emerald-900 animate-spin motion-reduce:animate-none" />
             ) : (
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -405,7 +446,36 @@ export default function MapSelector({
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                className="w-4 h-4"
+                className="w-5 h-5"
+                aria-hidden="true"
+              >
+                <path d="M7 20h10" />
+                <path d="M10 20c5.5-2.5.8-6.4 3-10" />
+                <path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z" />
+                <path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z" />
+              </svg>
+            )}
+            <span>{isLoading ? t.readingLand : t.getRecommendations}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleUseMyLocation}
+            disabled={isLocating || isLoading}
+            className="w-full inline-flex items-center justify-center gap-2.5 px-6 py-4 rounded-full bg-black/35 backdrop-blur-md text-white text-base font-semibold border border-white/45 shadow-md hover:bg-black/50 active:scale-[0.99] transition disabled:opacity-60 disabled:cursor-wait cursor-pointer"
+          >
+            {isLocating ? (
+              <span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin motion-reduce:animate-none" />
+            ) : (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="w-5 h-5"
                 aria-hidden="true"
               >
                 <circle cx="12" cy="12" r="3" />
@@ -419,11 +489,50 @@ export default function MapSelector({
           </button>
 
           {error && (
-            <p role="alert" className="w-full text-sm font-medium text-red-700">
+            <p
+              role="alert"
+              className="mt-1 rounded-xl bg-red-950/75 border border-red-400/40 px-4 py-2.5 text-sm font-medium text-red-100"
+            >
               {error}
             </p>
           )}
         </div>
+      </main>
+
+      {/* Bottom Layered Green Wave Footer + Sprout */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none fixed bottom-0 inset-x-0 z-0 h-20 overflow-hidden"
+      >
+        <svg
+          viewBox="0 0 1440 120"
+          preserveAspectRatio="none"
+          className="w-full h-full"
+        >
+          <path
+            d="M0,45 C360,115 880,5 1440,55 L1440,120 L0,120 Z"
+            fill="#6AB04C"
+          />
+          <path
+            d="M0,65 C420,125 940,15 1440,70 L1440,120 L0,120 Z"
+            fill="#0b3d26"
+          />
+        </svg>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#6AB04C"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="absolute bottom-3 right-5 w-7 h-7 opacity-80"
+        >
+          <path d="M7 20h10" />
+          <path d="M10 20c5.5-2.5.8-6.4 3-10" />
+          <path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z" />
+          <path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z" />
+        </svg>
       </div>
     </div>
   );

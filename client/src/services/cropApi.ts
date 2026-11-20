@@ -31,11 +31,13 @@ export interface BackendResponse {
 }
 
 const BACKEND_URL =
+  import.meta.env.VITE_API_URL ||
   "https://agrishift-server.vercel.app/rotation/recommend/coordinates";
+
 const STATIC_CROP_IMAGES: Record<string, string> = {
   corn: "/static/corn.jpg",
   cotton: "/static/cotton.jpg",
-  "faba bean": "/static/faba_bean.jpg", 
+  "faba bean": "/static/faba_bean.jpg",
   "broad bean": "/static/faba_bean.jpg",
   garlic: "/static/garlic.jpg",
   maize: "/static/maize.jpg",
@@ -66,15 +68,15 @@ export async function sendAgroDataToBackend(
       lon: payload.coordinates.longitude,
       start_date: payload.date,
       previous_crop: null,
-      // Fetch top 12 combos so merging duplicate starting crops still yields distinct options
       top_k: 12,
     }),
   });
 
   if (!response.ok) {
     let reason = `This location could not be evaluated (HTTP ${response.status}).`;
+    const rawText = await response.text();
     try {
-      const errJson = await response.json();
+      const errJson = JSON.parse(rawText);
       if (errJson?.detail) {
         reason =
           typeof errJson.detail === "string"
@@ -82,8 +84,9 @@ export async function sendAgroDataToBackend(
             : JSON.stringify(errJson.detail);
       }
     } catch {
-      const errText = await response.text();
-      if (errText) reason = errText;
+      if (rawText && !rawText.trim().startsWith("<")) {
+        reason = rawText;
+      }
     }
 
     return {
@@ -99,17 +102,8 @@ export async function sendAgroDataToBackend(
   const data = await response.json();
 
   if (Array.isArray(data.plans) && data.plans.length > 0) {
-    const groupedMap = new Map<
-      string,
-      {
-        crop: string;
-        suitability_score: number;
-        season: string;
-        nextOptions: string[];
-        notes: string;
-        image_url?: string;
-      }
-    >();
+    const seenSignatures = new Set<string>();
+    const recommendations: CropRecommendation[] = [];
 
     for (const planObj of data.plans) {
       const steps = planObj.plan || [];
@@ -118,57 +112,30 @@ export async function sendAgroDataToBackend(
       const third = steps[2];
 
       const cropName = (first.crop || "wheat").trim();
-      const cropKey = cropName.toLowerCase();
-
       const nextChain = [second.crop, third?.crop]
         .filter(Boolean)
         .map((c: string) => c.trim())
         .join(" → ");
 
-      if (!groupedMap.has(cropKey)) {
-        groupedMap.set(cropKey, {
-          crop: cropName,
-          suitability_score: Math.round(
-            first.suitability ?? planObj.score ?? 90,
-          ),
-          season: first.season || (data.seasons?.[0] ?? "Winter"),
-          nextOptions: nextChain ? [nextChain] : [],
-          notes: `Top rotation score: ${planObj.score}/100. Unmet water need: ${
-            first.water_need_unmet_pct ?? 0
-          }% (irrigation deficit: ${
-            first.avg_monthly_irrigation_deficit_mm ?? 0
-          } mm/mo).`,
-          image_url: getCropImageUrl(cropName),
-        });
-      } else {
-        const existing = groupedMap.get(cropKey)!;
-        // Merge distinct follow-up rotation crops with a comma (up to 3 options per card)
-        if (
-          nextChain &&
-          !existing.nextOptions.some(
-            (opt) => opt.toLowerCase() === nextChain.toLowerCase(),
-          ) &&
-          existing.nextOptions.length < 3
-        ) {
-          existing.nextOptions.push(nextChain);
-        }
-      }
-    }
+      const signature = `${cropName.toLowerCase()}|${nextChain.toLowerCase()}`;
+      if (seenSignatures.has(signature)) continue;
+      seenSignatures.add(signature);
 
-    // Take up to 3 distinct starting crop cards
-    const recommendations: CropRecommendation[] = Array.from(
-      groupedMap.values(),
-    )
-      .slice(0, 3)
-      .map((group) => ({
-        crop: group.crop,
-        suitability_score: group.suitability_score,
-        season: group.season,
-        rotation_next:
-          group.nextOptions.length > 0 ? group.nextOptions.join(", ") : "maize",
-        notes: group.notes,
-        image_url: group.image_url,
-      }));
+      recommendations.push({
+        crop: cropName,
+        suitability_score: Math.round(first.suitability ?? planObj.score ?? 90),
+        season: first.season || (data.seasons?.[0] ?? "Winter"),
+        rotation_next: nextChain || "maize",
+        notes: `Top rotation score: ${planObj.score}/100. Unmet water need: ${
+          first.water_need_unmet_pct ?? 0
+        }% (irrigation deficit: ${
+          first.avg_monthly_irrigation_deficit_mm ?? 0
+        } mm/mo).`,
+        image_url: getCropImageUrl(cropName),
+      });
+
+      if (recommendations.length === 3) break;
+    }
 
     return {
       status: "suitable",
