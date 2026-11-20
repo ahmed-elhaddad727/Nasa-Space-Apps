@@ -31,11 +31,11 @@ export interface BackendResponse {
 }
 
 const BACKEND_URL =
-  import.meta.env.VITE_API_URL || '/rotation/recommend/coordinates';
+  "https://agrishift-server.vercel.app/rotation/recommend/coordinates";
 const STATIC_CROP_IMAGES: Record<string, string> = {
   corn: "/static/corn.jpg",
   cotton: "/static/cotton.jpg",
-  "faba bean": "/static/faba_bean.jpg",
+  "faba bean": "/static/faba_bean.jpg", 
   "broad bean": "/static/faba_bean.jpg",
   garlic: "/static/garlic.jpg",
   maize: "/static/maize.jpg",
