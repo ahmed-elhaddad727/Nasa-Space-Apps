@@ -31,7 +31,7 @@ export interface BackendResponse {
 }
 
 const BACKEND_URL =
-  "https://agrishift-server.vercel.app/rotation/recommend/coordinates";
+  import.meta.env.VITE_API_URL || '/rotation/recommend/coordinates';
 const STATIC_CROP_IMAGES: Record<string, string> = {
   corn: "/static/corn.jpg",
   cotton: "/static/cotton.jpg",
