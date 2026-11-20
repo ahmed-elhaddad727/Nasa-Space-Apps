@@ -1,5 +1,6 @@
 from datetime import date, timedelta
 from pathlib import Path
+import re
 from typing import Any
 
 import httpx
@@ -17,6 +18,45 @@ app_settings = get_settings()
 
 # Cache both models separately
 _bundles: dict[str, Any | None] = {"egypt": None, "us": None}
+
+EXCLUDED_TERMS = ("wheatgrass", "bulbous", "buffelgrass", "wild ")
+
+
+def _sanitize_bundle_crops(bundle: dict[str, Any], nation: str) -> dict[str, Any]:
+    crops_df = bundle.get("crops")
+    if crops_df is None or "COMNAME" not in crops_df.columns:
+        return bundle
+
+    allowed = (
+        app_settings.EGYPTAIN_CROP_LIST
+        if nation == "egypt"
+        else app_settings.US_CROP_LIST
+    )
+    allowed_patterns = [
+        re.compile(rf"\b{re.escape(c.strip().lower())}\b") for c in allowed
+    ]
+
+    def is_valid_crop(name: Any) -> bool:
+        if not isinstance(name, str):
+            return False
+        lower = name.lower()
+        if any(bad in lower for bad in EXCLUDED_TERMS):
+            return False
+        return any(pat.search(lower) for pat in allowed_patterns)
+
+    filtered = crops_df[crops_df["COMNAME"].apply(is_valid_crop)].copy()
+
+    # Only apply if we actually matched crops (safety fallback)
+    if not filtered.empty:
+        filtered["COMNAME"] = (
+            filtered["COMNAME"]
+            .astype(str)
+            .apply(lambda s: s.split(",")[0].strip())
+        )
+        filtered = filtered.drop_duplicates(subset=["COMNAME"], keep="first")
+        bundle["crops"] = filtered
+
+    return bundle
 
 
 def get_bundle(nation: str) -> dict[str, Any]:
@@ -43,7 +83,9 @@ def get_bundle(nation: str) -> dict[str, Any]:
 
         if not path.exists():
             raise RuntimeError(f"{nation.capitalize()} model file not found at {path}")
-        _bundles[nation] = joblib.load(path)
+
+        loaded = joblib.load(path)
+        _bundles[nation] = _sanitize_bundle_crops(loaded, nation)
 
     return _bundles[nation]
 
