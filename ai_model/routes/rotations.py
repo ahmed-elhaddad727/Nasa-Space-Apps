@@ -19,7 +19,14 @@ app_settings = get_settings()
 # Cache both models separately
 _bundles: dict[str, Any | None] = {"egypt": None, "us": None}
 
-EXCLUDED_TERMS = ("wheatgrass", "bulbous", "buffelgrass", "wild ")
+EXCLUDED_TERMS = (
+    "wheatgrass",
+    "bulbous",
+    "buffelgrass",
+    "wild ",
+    "clover",
+    "alfalfa",
+)
 
 
 def _sanitize_bundle_crops(bundle: dict[str, Any], nation: str) -> dict[str, Any]:
@@ -40,6 +47,8 @@ def _sanitize_bundle_crops(bundle: dict[str, Any], nation: str) -> dict[str, Any
         if not isinstance(name, str):
             return False
         lower = name.lower()
+        if "berseem" in lower:
+            return True
         if any(bad in lower for bad in EXCLUDED_TERMS):
             return False
         return any(pat.search(lower) for pat in allowed_patterns)
