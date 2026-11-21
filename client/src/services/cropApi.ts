@@ -30,43 +30,115 @@ export interface BackendResponse {
   unsuitable_reason?: string;
 }
 
-<<<<<<< HEAD
+interface BackendPlanStep {
+  season: string;
+  crop: string;
+  suitability: number;
+  water_need_unmet_pct: number;
+  avg_monthly_irrigation_deficit_mm: number;
+}
+
+interface BackendPlan {
+  score: number;
+  plan: BackendPlanStep[];
+}
+
+interface BackendApiResponse {
+  nation?: string;
+  coordinates?: {
+    lat: number;
+    lon: number;
+  };
+  seasons?: string[];
+  plans?: BackendPlan[];
+}
+
 const RAW_API_URL =
-  import.meta.env.VITE_API_URL || "https://agrishift-server.vercel.app";
+  import.meta.env.VITE_API_URL ||
+  "http://localhost:8000/rotation/recommend/coordinates";
 
 const BACKEND_URL = RAW_API_URL.includes("/rotation/recommend/coordinates")
   ? RAW_API_URL
   : `${RAW_API_URL.replace(/\/+$/, "")}/rotation/recommend/coordinates`;
-=======
-const BACKEND_URL =
-  // import.meta.env.VITE_API_URL ||
-  "http:localhost:8000/rotation/recommend/coordinates";
->>>>>>> 97e1b016750b25b882e6df9b15da4b5e8d31209b
 
 const STATIC_CROP_IMAGES: Record<string, string> = {
   corn: "/static/corn.jpg",
+  maize: "/static/corn.jpg",
   cotton: "/static/cotton.jpg",
   "faba bean": "/static/faba_bean.jpg",
   "broad bean": "/static/faba_bean.jpg",
   garlic: "/static/garlic.jpg",
-  maize: "/static/maize.jpg",
   onion: "/static/onion.jpg",
   potato: "/static/potato.jpg",
   rice: "/static/rice.jpg",
   "sugar beet": "/static/sugar_beet.jpg",
   sugarcane: "/static/sugarcane.jpg",
+  sunflower: "/static/sunflower.jpg",
   tomato: "/static/tomato.jpg",
   wheat: "/static/wheat.jpg",
   "durum wheat": "/static/wheat.jpg",
+};
+
+const CROP_ALIASES: Record<string, string> = {
+  maize: "corn",
+  "broad bean": "faba bean",
+  "durum wheat": "wheat",
 };
 
 function cleanCropName(raw: string): string {
   return raw.split(",")[0].trim();
 }
 
+function canonicalCropKey(raw: string): string {
+  const base = cleanCropName(raw).toLowerCase();
+  return CROP_ALIASES[base] ?? base;
+}
+
+function formatCropDisplay(raw: string): string {
+  return cleanCropName(raw)
+    .split(/\s+/)
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : ""))
+    .join(" ");
+}
+
 export function getCropImageUrl(cropName: string): string | undefined {
   const key = cleanCropName(cropName).toLowerCase();
-  return STATIC_CROP_IMAGES[key];
+  return STATIC_CROP_IMAGES[key] ?? STATIC_CROP_IMAGES[canonicalCropKey(key)];
+}
+
+function buildRecommendation(
+  planObj: BackendPlan,
+  fallbackSeason: string,
+): CropRecommendation {
+  const steps = planObj.plan ?? [];
+  const first = steps[0];
+  const followUps = steps.slice(1);
+
+  const rawFirstCrop = first?.crop || "wheat";
+  const cropDisplay = formatCropDisplay(rawFirstCrop);
+
+  const nextChain = followUps
+    .map((s) => formatCropDisplay(s.crop))
+    .filter(Boolean)
+    .join(" → ");
+
+  const followUpSummary =
+    followUps.length > 0
+      ? ` Next (${followUps[0].season}): ${formatCropDisplay(followUps[0].crop)} (${
+          followUps[0].avg_monthly_irrigation_deficit_mm ?? 0
+        } mm/mo deficit).`
+      : "";
+
+  return {
+    crop: cropDisplay,
+    suitability_score: Math.round(first?.suitability ?? planObj.score ?? 0),
+    season: first?.season || fallbackSeason,
+    rotation_next: nextChain || "None",
+    notes: `Rotation score: ${planObj.score}/100. Unmet water need: ${
+      first?.water_need_unmet_pct ?? 0
+    }% (${first?.avg_monthly_irrigation_deficit_mm ?? 0} mm/mo deficit).${followUpSummary}`,
+    image_url: getCropImageUrl(rawFirstCrop),
+  };
 }
 
 export async function sendAgroDataToBackend(
@@ -113,86 +185,61 @@ export async function sendAgroDataToBackend(
     };
   }
 
-  const data = await response.json();
+  const data: BackendApiResponse = await response.json();
 
   if (Array.isArray(data.plans) && data.plans.length > 0) {
-    const seenCrops = new Set<string>();
-    const recommendations: CropRecommendation[] = [];
+    const validPlans = data.plans.filter(
+      (p) => Array.isArray(p.plan) && p.plan.length > 0,
+    );
 
-    for (const planObj of data.plans) {
-      const steps = planObj.plan || [];
-      const first = steps[0] || {};
-      const second = steps[1] || {};
-      const third = steps[2];
+    const selectedPlans: BackendPlan[] = [];
+    const seenFirstCrops = new Set<string>();
+    const seenChains = new Set<string>();
 
-<<<<<<< HEAD
-      const cropName = cleanCropName(first.crop || "wheat");
-      const cropKey = cropName.toLowerCase();
-=======
-<<<<<<< Updated upstream
-        const cropName = cleanCropName(first.crop || "wheat");
-        const cropKey = cropName.toLowerCase();
-=======
-      const cropName = (first.crop).trim();
-      const nextChain = [second.crop, third?.crop]
-        .filter(Boolean)
-        .map((c: string) => c.trim())
-        .join(" → ");
->>>>>>> Stashed changes
->>>>>>> 97e1b016750b25b882e6df9b15da4b5e8d31209b
+    // Pass 1: Prefer plans with distinct starting crops
+    for (const planObj of validPlans) {
+      const firstKey = canonicalCropKey(planObj.plan[0].crop);
+      const chainKey = planObj.plan
+        .map((s) => canonicalCropKey(s.crop))
+        .join("->");
 
-      if (seenCrops.has(cropKey)) continue;
-      seenCrops.add(cropKey);
+      if (seenFirstCrops.has(firstKey) || seenChains.has(chainKey)) continue;
 
-<<<<<<< HEAD
-      const nextChain = [second.crop, third?.crop]
-        .filter(Boolean)
-        .map((c: string) => cleanCropName(c))
-        .join(" → ");
-=======
-<<<<<<< Updated upstream
-        const nextChain = [second.crop, third?.crop]
-          .filter(Boolean)
-          .map((c: string) => cleanCropName(c))
-          .join(" → ");
-=======
-      recommendations.push({
-        crop: cropName,
-        suitability_score: Math.round(first.suitability ?? planObj.score ?? 90),
-        season: first.season,
-        rotation_next: nextChain,
-        notes: `Top rotation score: ${planObj.score}/100. Unmet water need: ${
-          first.water_need_unmet_pct ?? 0
-        }% (irrigation deficit: ${
-          first.avg_monthly_irrigation_deficit_mm ?? 0
-        } mm/mo).`,
-        image_url: getCropImageUrl(cropName),
-      });
->>>>>>> Stashed changes
->>>>>>> 97e1b016750b25b882e6df9b15da4b5e8d31209b
+      seenFirstCrops.add(firstKey);
+      seenChains.add(chainKey);
+      selectedPlans.push(planObj);
 
-      recommendations.push({
-        crop: cropName,
-        suitability_score: Math.round(first.suitability ?? planObj.score ?? 90),
-        season: first.season || (data.seasons?.[0] ?? "Winter"),
-        rotation_next: nextChain || "Maize",
-        notes: `Top rotation score: ${planObj.score}/100. Unmet water need: ${
-          first.water_need_unmet_pct ?? 0
-        }% (irrigation deficit: ${
-          first.avg_monthly_irrigation_deficit_mm ?? 0
-        } mm/mo).`,
-        image_url: getCropImageUrl(cropName),
-      });
-
-      if (recommendations.length === 3) break;
+      if (selectedPlans.length === 3) break;
     }
+
+    // Pass 2: If fewer than 3 unique starting crops exist (e.g. all top plans start with "onion"),
+    // fill remaining slots with the highest-scoring distinct full rotation sequences.
+    if (selectedPlans.length < 3) {
+      for (const planObj of validPlans) {
+        const chainKey = planObj.plan
+          .map((s) => canonicalCropKey(s.crop))
+          .join("->");
+
+        if (seenChains.has(chainKey)) continue;
+
+        seenChains.add(chainKey);
+        selectedPlans.push(planObj);
+
+        if (selectedPlans.length === 3) break;
+      }
+    }
+
+    const fallbackSeason = data.seasons?.[0] ?? "Winter";
+    const lat = data.coordinates?.lat ?? payload.coordinates.latitude;
+    const lon = data.coordinates?.lon ?? payload.coordinates.longitude;
+    const nationPrefix = data.nation ? `${data.nation.toUpperCase()} — ` : "";
 
     return {
       status: "suitable",
-      location_summary: `${(data.nation).toUpperCase()} — Lat ${payload.coordinates.latitude.toFixed(
-        2,
-      )}°, Lon ${payload.coordinates.longitude.toFixed(2)}°`,
-      recommendations,
+      location_summary: `${nationPrefix}Lat ${lat.toFixed(2)}°, Lon ${lon.toFixed(2)}°`,
+      recommendations: selectedPlans.map((p) =>
+        buildRecommendation(p, fallbackSeason),
+      ),
     };
   }
 

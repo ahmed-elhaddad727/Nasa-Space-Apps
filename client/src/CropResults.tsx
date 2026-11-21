@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { BackendResponse, NasaAgroPayload } from './services/cropApi';
+import React, { useState, useEffect } from "react";
+import { BackendResponse, NasaAgroPayload } from "./services/cropApi";
 import {
   Lang,
   UI_TEXT,
@@ -9,10 +9,10 @@ import {
   translateNotes,
   translateUnsuitableReason,
   buildResultsSpeech,
-} from './i18n';
-import { speak, stopSpeaking } from './utils/speech';
+} from "./i18n";
+import { speak, stopSpeaking } from "./utils/speech";
 
-const BG_IMAGE = '/bg-image.jpg';
+const BG_IMAGE = "/bg-image.jpg";
 
 interface CropResultsProps {
   result: BackendResponse;
@@ -21,6 +21,16 @@ interface CropResultsProps {
   onBack: () => void;
   lang: Lang;
   onToggleLang: () => void;
+}
+
+function formatMetric(
+  value: number | null,
+  suffix: string,
+  decimals = 1,
+): string {
+  if (value === null || Number.isNaN(value)) return "N/A";
+  const rounded = Number(value.toFixed(decimals));
+  return `${rounded}${suffix}`;
 }
 
 export default function CropResults({
@@ -32,11 +42,12 @@ export default function CropResults({
   onToggleLang,
 }: CropResultsProps) {
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
 
   const { T2M, PRECTOTCORR, RH2M, GWETTOP } = payload.agroclimatology;
 
   const t = UI_TEXT[lang];
-  const isRtl = lang === 'ar';
+  const isRtl = lang === "ar";
 
   useEffect(() => {
     stopSpeaking();
@@ -68,17 +79,17 @@ export default function CropResults({
   };
 
   const isSuitable =
-    result.status === 'suitable' && result.recommendations.length > 0;
+    result.status === "suitable" && result.recommendations.length > 0;
 
   const glassBtn =
-    'bg-white/[0.12] backdrop-blur-xl text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_8px_24px_rgba(0,0,0,0.3)] hover:bg-white/20 active:scale-[0.99] transition cursor-pointer';
+    "bg-white/[0.12] backdrop-blur-xl text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_8px_24px_rgba(0,0,0,0.3)] hover:bg-white/20 active:scale-[0.99] transition cursor-pointer";
 
   const glassCard =
-    'bg-white/[0.08] backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_16px_40px_rgba(0,0,0,0.45)]';
+    "bg-white/[0.08] backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_16px_40px_rgba(0,0,0,0.45)]";
 
   return (
     <div
-      dir={isRtl ? 'rtl' : 'ltr'}
+      dir={isRtl ? "rtl" : "ltr"}
       className="relative isolate min-h-screen flex flex-col justify-between overflow-hidden bg-[#08150e] text-white font-['Bricolage_Grotesque',ui-sans-serif,system-ui,sans-serif]"
     >
       {/* Full-bleed background + deep editorial gradient */}
@@ -90,7 +101,7 @@ export default function CropResults({
           style={{ backgroundImage: `url('${BG_IMAGE}')` }}
           className="absolute inset-0 bg-cover bg-center"
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#05100a]/92 via-[#07180f]/78 to-[#06140c]/65" />
+        <div className="absolute inset-0 bg-linear-to-r from-[#05100a]/92 via-[#07180f]/78 to-[#06140c]/65" />
       </div>
 
       {/* Full-Width Top Bar */}
@@ -113,7 +124,7 @@ export default function CropResults({
             aria-pressed={isSpeaking}
             className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition cursor-pointer ${
               isSpeaking
-                ? 'bg-[#0b5d3b] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.35)]'
+                ? "bg-[#0b5d3b] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.35)]"
                 : glassBtn
             }`}
           >
@@ -176,12 +187,22 @@ export default function CropResults({
       <main className="relative z-10 w-full px-6 sm:px-10 lg:px-14 pt-8 pb-24 flex-1">
         {/* Editorial Headline */}
         <header className="mb-8 max-w-4xl">
-          <p className="text-xs font-bold uppercase tracking-widest text-[#6AB04C] mb-2.5">
-            {t.nasaHeader}
-          </p>
+          <div className="flex flex-wrap items-center gap-2.5 mb-2.5">
+            <p className="text-xs font-bold uppercase tracking-widest text-[#6AB04C]">
+              {t.nasaHeader}
+            </p>
+            {result.location_summary && (
+              <span
+                dir="ltr"
+                className="px-2.5 py-0.5 rounded-full bg-white/10 text-[11px] font-semibold tracking-wide text-white/80"
+              >
+                {result.location_summary}
+              </span>
+            )}
+          </div>
           <h1
             className={`text-4xl sm:text-5xl lg:text-6xl font-black uppercase tracking-tighter leading-[0.96] text-white drop-shadow-md ${
-              isRtl ? '' : 'italic'
+              isRtl ? "" : "italic"
             }`}
           >
             {isSuitable ? t.suitableHeadline : t.unsuitableHeadline}
@@ -194,19 +215,22 @@ export default function CropResults({
           {[
             {
               label: t.tempLabel,
-              val: T2M !== null ? `${T2M} °C` : 'N/A',
+              val: formatMetric(T2M, " °C", 1),
             },
             {
               label: t.soilWetnessLabel,
-              val: GWETTOP !== null ? `${Math.round(GWETTOP * 100)}%` : 'N/A',
+              val:
+                GWETTOP !== null && !Number.isNaN(GWETTOP)
+                  ? `${Math.round(GWETTOP * 100)}%`
+                  : "N/A",
             },
             {
               label: t.humidityLabel,
-              val: RH2M !== null ? `${RH2M}%` : 'N/A',
+              val: formatMetric(RH2M, "%", 0),
             },
             {
               label: t.precipLabel,
-              val: PRECTOTCORR !== null ? `${PRECTOTCORR} mm` : 'N/A',
+              val: formatMetric(PRECTOTCORR, " mm", 1),
             },
           ].map((stat, i) => (
             <div key={i} className={`rounded-2xl p-4 sm:p-5 ${glassCard}`}>
@@ -226,82 +250,90 @@ export default function CropResults({
         {/* 3 Distinct Crop Cards vs. Unsuitable Card */}
         {isSuitable ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {result.recommendations.slice(0, 3).map((item, idx) => (
-              <article
-                key={idx}
-                className={`flex flex-col justify-between rounded-3xl overflow-hidden ${glassCard}`}
-              >
-                <div>
-                  {item.image_url && (
-                    <img
-                      src={item.image_url}
-                      alt={item.crop}
-                      onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).style.display =
-                          'none';
-                      }}
-                      className="w-full h-40 object-cover"
-                    />
-                  )}
-                  <div className="p-6">
-                    <div className="flex items-start justify-between gap-2">
-                      <h2 className="text-2xl font-extrabold capitalize tracking-tight text-white">
-                        {translateCrop(item.crop, lang)}
-                      </h2>
-                      <span className="px-3 py-0.5 rounded-full bg-[#0b5d3b] text-xs font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]">
-                        #{idx + 1}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-sm text-white/70">
-                      {t.seasonLabel}: {translateSeason(item.season, lang)}
-                    </p>
+            {result.recommendations.slice(0, 3).map((item, idx) => {
+              const showImage =
+                Boolean(item.image_url) && !failedImages[item.image_url!];
 
-                    {/* Suitability bar */}
-                    <div className="mt-5">
-                      <div className="flex items-baseline justify-between text-sm">
-                        <span className="text-white/75">{t.matchLabel}</span>
-                        <span className="font-bold tabular-nums text-[#6AB04C]">
-                          {item.suitability_score}%
+              return (
+                <article
+                  key={`${item.crop}-${item.rotation_next}-${idx}`}
+                  className={`flex flex-col justify-between rounded-3xl overflow-hidden ${glassCard}`}
+                >
+                  <div>
+                    {showImage && (
+                      <img
+                        src={item.image_url}
+                        alt={translateCrop(item.crop, lang)}
+                        onError={() =>
+                          setFailedImages((prev) => ({
+                            ...prev,
+                            [item.image_url!]: true,
+                          }))
+                        }
+                        className="w-full h-40 object-cover"
+                      />
+                    )}
+                    <div className="p-6">
+                      <div className="flex items-start justify-between gap-2">
+                        <h2 className="text-2xl font-extrabold capitalize tracking-tight text-white">
+                          {translateCrop(item.crop, lang)}
+                        </h2>
+                        <span className="px-3 py-0.5 rounded-full bg-[#0b5d3b] text-xs font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]">
+                          #{idx + 1}
                         </span>
                       </div>
-                      <div
-                        role="progressbar"
-                        aria-valuenow={item.suitability_score}
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                        className="mt-2 h-2 rounded-full bg-white/15 overflow-hidden"
-                      >
+                      <p className="mt-1 text-sm text-white/70">
+                        {t.seasonLabel}: {translateSeason(item.season, lang)}
+                      </p>
+
+                      {/* Suitability bar */}
+                      <div className="mt-5">
+                        <div className="flex items-baseline justify-between text-sm">
+                          <span className="text-white/75">{t.matchLabel}</span>
+                          <span className="font-bold tabular-nums text-[#6AB04C]">
+                            {item.suitability_score}%
+                          </span>
+                        </div>
                         <div
-                          className="h-full rounded-full bg-[#6AB04C]"
-                          style={{
-                            width: `${Math.max(
-                              0,
-                              Math.min(100, item.suitability_score)
-                            )}%`,
-                          }}
-                        />
+                          role="progressbar"
+                          aria-label={t.matchLabel}
+                          aria-valuenow={item.suitability_score}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          className="mt-2 h-2 rounded-full bg-white/15 overflow-hidden"
+                        >
+                          <div
+                            className="h-full rounded-full bg-[#6AB04C]"
+                            style={{
+                              width: `${Math.max(
+                                0,
+                                Math.min(100, item.suitability_score),
+                              )}%`,
+                            }}
+                          />
+                        </div>
                       </div>
+
+                      <p className="mt-5 text-sm leading-relaxed text-white/80">
+                        {translateNotes(item.notes, lang)}
+                      </p>
                     </div>
-
-                    <p className="mt-5 text-sm leading-relaxed text-white/80">
-                      {translateNotes(item.notes, lang)}
-                    </p>
                   </div>
-                </div>
 
-                <div className="px-6 pb-6 pt-4 border-t border-white/10 text-sm">
-                  <span className="text-white/65">{t.plantNextLabel}</span>{' '}
-                  <strong className="font-bold capitalize text-white">
-                    {translateRotationChain(item.rotation_next, lang)}
-                  </strong>
-                </div>
-              </article>
-            ))}
+                  <div className="px-6 pb-6 pt-4 border-t border-white/10 text-sm">
+                    <span className="text-white/65">{t.plantNextLabel}</span>{" "}
+                    <strong className="font-bold capitalize text-[#9be07a]">
+                      {translateRotationChain(item.rotation_next, lang)}
+                    </strong>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         ) : (
           <div className={`rounded-3xl p-6 sm:p-8 max-w-3xl ${glassCard}`}>
             <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 w-11 h-11 rounded-2xl bg-red-500/20 text-red-300 flex items-center justify-center font-bold text-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.15)]">
+              <div className="shrink-0 w-11 h-11 rounded-2xl bg-red-500/20 text-red-300 flex items-center justify-center font-bold text-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.15)]">
                 !
               </div>
               <div className="flex-1">
