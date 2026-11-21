@@ -30,9 +30,12 @@ export interface BackendResponse {
   unsuitable_reason?: string;
 }
 
-const BACKEND_URL =
-  import.meta.env.VITE_API_URL ||
-  "https://agrishift-server.vercel.app/rotation/recommend/coordinates";
+const RAW_API_URL =
+  import.meta.env.VITE_API_URL || "https://agrishift-server.vercel.app";
+
+const BACKEND_URL = RAW_API_URL.includes("/rotation/recommend/coordinates")
+  ? RAW_API_URL
+  : `${RAW_API_URL.replace(/\/+$/, "")}/rotation/recommend/coordinates`;
 
 const STATIC_CROP_IMAGES: Record<string, string> = {
   corn: "/static/corn.jpg",
@@ -48,19 +51,11 @@ const STATIC_CROP_IMAGES: Record<string, string> = {
   sugarcane: "/static/sugarcane.jpg",
   tomato: "/static/tomato.jpg",
   wheat: "/static/wheat.jpg",
+  "durum wheat": "/static/wheat.jpg",
 };
 
-// Strips EcoCrop synonym lists ("Sunflower, Italian Girasole..." -> "Sunflower")
 function cleanCropName(raw: string): string {
   return raw.split(",")[0].trim();
-}
-
-function isWildForageGrass(cropKey: string): boolean {
-  return (
-    cropKey.includes("wheatgrass") ||
-    cropKey.includes("bulbous") ||
-    cropKey.includes("buffelgrass")
-  );
 }
 
 export function getCropImageUrl(cropName: string): string | undefined {
@@ -115,61 +110,40 @@ export async function sendAgroDataToBackend(
   const data = await response.json();
 
   if (Array.isArray(data.plans) && data.plans.length > 0) {
-    const buildUniqueList = (skipWildGrasses: boolean): CropRecommendation[] => {
-      const seenCrops = new Set<string>();
-      const list: CropRecommendation[] = [];
+    const seenCrops = new Set<string>();
+    const recommendations: CropRecommendation[] = [];
 
-      for (const planObj of data.plans) {
-        const steps = planObj.plan || [];
-        const first = steps[0] || {};
-        const second = steps[1] || {};
-        const third = steps[2];
+    for (const planObj of data.plans) {
+      const steps = planObj.plan || [];
+      const first = steps[0] || {};
+      const second = steps[1] || {};
+      const third = steps[2];
 
-        const cropName = cleanCropName(first.crop || "wheat");
-        const cropKey = cropName.toLowerCase();
+      const cropName = cleanCropName(first.crop || "wheat");
+      const cropKey = cropName.toLowerCase();
 
-        if (skipWildGrasses && isWildForageGrass(cropKey)) continue;
-        if (seenCrops.has(cropKey)) continue;
-        seenCrops.add(cropKey);
+      if (seenCrops.has(cropKey)) continue;
+      seenCrops.add(cropKey);
 
-        const nextChain = [second.crop, third?.crop]
-          .filter(Boolean)
-          .map((c: string) => cleanCropName(c))
-          .join(" → ");
+      const nextChain = [second.crop, third?.crop]
+        .filter(Boolean)
+        .map((c: string) => cleanCropName(c))
+        .join(" → ");
 
-        list.push({
-          crop: cropName,
-          suitability_score: Math.round(first.suitability ?? planObj.score ?? 90),
-          season: first.season || (data.seasons?.[0] ?? "Winter"),
-          rotation_next: nextChain || "Maize",
-          notes: `Top rotation score: ${planObj.score}/100. Unmet water need: ${
-            first.water_need_unmet_pct ?? 0
-          }% (irrigation deficit: ${
-            first.avg_monthly_irrigation_deficit_mm ?? 0
-          } mm/mo).`,
-          image_url: getCropImageUrl(cropName),
-        });
+      recommendations.push({
+        crop: cropName,
+        suitability_score: Math.round(first.suitability ?? planObj.score ?? 90),
+        season: first.season || (data.seasons?.[0] ?? "Winter"),
+        rotation_next: nextChain || "Maize",
+        notes: `Top rotation score: ${planObj.score}/100. Unmet water need: ${
+          first.water_need_unmet_pct ?? 0
+        }% (irrigation deficit: ${
+          first.avg_monthly_irrigation_deficit_mm ?? 0
+        } mm/mo).`,
+        image_url: getCropImageUrl(cropName),
+      });
 
-        if (list.length === 3) break;
-      }
-
-      return list;
-    };
-
-    // First try to get 3 food/commercial crops; if fewer than 3 exist, backfill cleanly
-    let recommendations = buildUniqueList(true);
-    if (recommendations.length < 3) {
-      const fallback = buildUniqueList(false);
-      const existingKeys = new Set(
-        recommendations.map((r) => r.crop.toLowerCase()),
-      );
-      for (const item of fallback) {
-        if (!existingKeys.has(item.crop.toLowerCase())) {
-          recommendations.push(item);
-          existingKeys.add(item.crop.toLowerCase());
-        }
-        if (recommendations.length === 3) break;
-      }
+      if (recommendations.length === 3) break;
     }
 
     return {
