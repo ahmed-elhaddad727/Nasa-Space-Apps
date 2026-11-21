@@ -29,7 +29,6 @@ class Settings(BaseSettings):
     EGYPT_MODEL_PATH: Path = ROOT_DIR / "saved_models" / "egypt_rotation_model.joblib"
     EGYPTAIN_CROP_LIST: ClassVar[list[str]] = [
         "wheat",
-        "maize",
         "corn",
         "rice",
         "cotton",
