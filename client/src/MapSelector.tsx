@@ -1,12 +1,12 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from "react";
 import {
   sendAgroDataToBackend,
   NasaAgroPayload,
   BackendResponse,
-} from './services/cropApi';
-import { Lang, UI_TEXT } from './i18n';
+} from "./services/cropApi";
+import { Lang, UI_TEXT } from "./i18n";
 
-const BG_IMAGE = '/IMG-20261120-WA0139.jpg';
+const BG_IMAGE = "/bg-image.jpg";
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 12;
@@ -15,7 +15,7 @@ interface MapSelectorProps {
   onComplete: (
     result: BackendResponse,
     payload: NasaAgroPayload,
-    autoSpeak?: boolean
+    autoSpeak?: boolean,
   ) => void;
   lang: Lang;
   onToggleLang: () => void;
@@ -35,7 +35,7 @@ export default function MapSelector({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [liveAnnouncement, setLiveAnnouncement] = useState<string>('');
+  const [liveAnnouncement, setLiveAnnouncement] = useState<string>("");
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const isDraggingPointerRef = useRef<boolean>(false);
@@ -43,12 +43,12 @@ export default function MapSelector({
   const panStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const t = UI_TEXT[lang];
-  const isRtl = lang === 'ar';
+  const isRtl = lang === "ar";
 
   useEffect(() => {
     const handleContextMenu = (e: MouseEvent) => e.preventDefault();
-    window.addEventListener('contextmenu', handleContextMenu);
-    return () => window.removeEventListener('contextmenu', handleContextMenu);
+    window.addEventListener("contextmenu", handleContextMenu);
+    return () => window.removeEventListener("contextmenu", handleContextMenu);
   }, []);
 
   useEffect(() => {
@@ -58,11 +58,11 @@ export default function MapSelector({
       e.preventDefault();
       const factor = e.deltaY < 0 ? 1.25 : 0.8;
       setZoom((z) =>
-        Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Number((z * factor).toFixed(2))))
+        Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Number((z * factor).toFixed(2)))),
       );
     };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
   }, []);
 
   useEffect(() => {
@@ -117,7 +117,7 @@ export default function MapSelector({
 
   const analyzeCoords = async (
     targetCoords: { lat: number; lon: number },
-    autoSpeak = false
+    autoSpeak = false,
   ) => {
     setIsLoading(true);
     setError(null);
@@ -125,7 +125,7 @@ export default function MapSelector({
     try {
       const now = new Date();
       const targetDate = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
-      const yyyymmdd = targetDate.toISOString().slice(0, 10).replace(/-/g, '');
+      const yyyymmdd = targetDate.toISOString().slice(0, 10).replace(/-/g, "");
 
       const nasaUrl = `https://power.larc.nasa.gov/api/temporal/daily/point?parameters=T2M,PRECTOTCORR,RH2M,ALLSKY_SFC_SW_DWN,GWETTOP&community=AG&longitude=${targetCoords.lon}&latitude=${targetCoords.lat}&start=${yyyymmdd}&end=${yyyymmdd}&format=JSON`;
 
@@ -155,7 +155,7 @@ export default function MapSelector({
       const result = await sendAgroDataToBackend(payload);
       onComplete(result, payload, autoSpeak);
     } catch (err) {
-      console.error('Error fetching agro data:', err);
+      console.error("Error fetching agro data:", err);
       setError(t.fetchError);
       setLiveAnnouncement(t.fetchError);
     } finally {
@@ -205,7 +205,7 @@ export default function MapSelector({
         enableHighAccuracy: true,
         timeout: 10000,
         maximumAge: 0,
-      }
+      },
     );
   };
 
@@ -213,22 +213,23 @@ export default function MapSelector({
   const pointerTopPct = ((90 - coords.lat) / 180) * 100;
 
   const gibsBaseUrl =
-    'https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=BlueMarble_NextGeneration&STYLES=&FORMAT=image/jpeg&CRS=EPSG:4326&WIDTH=2048&HEIGHT=1024&BBOX=-90,-180,90,180';
+    "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=BlueMarble_NextGeneration&STYLES=&FORMAT=image/jpeg&CRS=EPSG:4326&WIDTH=2048&HEIGHT=1024&BBOX=-90,-180,90,180";
 
   const latLabel = `${Math.abs(coords.lat).toFixed(2)}°${
-    coords.lat >= 0 ? 'N' : 'S'
+    coords.lat >= 0 ? "N" : "S"
   }`;
   const lonLabel = `${Math.abs(coords.lon).toFixed(2)}°${
-    coords.lon >= 0 ? 'E' : 'W'
+    coords.lon >= 0 ? "E" : "W"
   }`;
 
   const glassBtn =
-    'bg-white/[0.12] backdrop-blur-xl text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_8px_24px_rgba(0,0,0,0.3)] hover:bg-white/20 active:scale-[0.99] transition cursor-pointer';
+    "bg-white/[0.12] backdrop-blur-xl text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_8px_24px_rgba(0,0,0,0.3)] hover:bg-white/20 active:scale-[0.99] transition cursor-pointer";
 
   return (
     <div
-      dir={isRtl ? 'rtl' : 'ltr'}
-      className="relative isolate min-h-screen flex flex-col justify-between overflow-hidden bg-[#08150e] text-white font-['Bricolage_Grotesque',ui-sans-serif,system-ui,sans-serif] select-none"
+      dir={isRtl ? "rtl" : "ltr"}
+      style={{ backgroundImage: `url('${BG_IMAGE}')` }}
+      className="bg-img relative isolate min-h-screen flex flex-col justify-between overflow-hidden bg-[#08150e] text-white font-['Bricolage_Grotesque',ui-sans-serif,system-ui,sans-serif] select-none"
     >
       {/* Screen-reader live region */}
       <div className="sr-only" aria-live="polite" aria-atomic="true">
@@ -280,7 +281,7 @@ export default function MapSelector({
             <header className="mb-6">
               <h1
                 className={`text-5xl sm:text-6xl xl:text-[4.35rem] font-black uppercase tracking-tighter leading-[0.94] text-white drop-shadow-md ${
-                  isRtl ? '' : 'italic'
+                  isRtl ? "" : "italic"
                 }`}
               >
                 {t.mapTitle}
@@ -375,8 +376,8 @@ export default function MapSelector({
               <div
                 style={{
                   transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})`,
-                  transformOrigin: 'center center',
-                  transition: 'none',
+                  transformOrigin: "center center",
+                  transition: "none",
                 }}
                 className="relative w-full h-full"
               >
@@ -420,7 +421,7 @@ export default function MapSelector({
                   aria-label="Zoom in"
                   onClick={() =>
                     setZoom((z) =>
-                      Math.min(MAX_ZOOM, Number((z * 1.25).toFixed(2)))
+                      Math.min(MAX_ZOOM, Number((z * 1.25).toFixed(2))),
                     )
                   }
                   className="w-6 h-6 rounded-full text-sm leading-none hover:bg-black/10 cursor-pointer"
@@ -434,7 +435,7 @@ export default function MapSelector({
                   aria-label="Zoom out"
                   onClick={() =>
                     setZoom((z) =>
-                      Math.max(MIN_ZOOM, Number((z * 0.8).toFixed(2)))
+                      Math.max(MIN_ZOOM, Number((z * 0.8).toFixed(2))),
                     )
                   }
                   className="w-6 h-6 rounded-full text-sm leading-none hover:bg-black/10 cursor-pointer"
