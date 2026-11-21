@@ -125,10 +125,10 @@ class Settings(BaseSettings):
     US_MODEL_PATH: Path = ROOT_DIR / "saved_models" / "us_rotation_model.joblib"
     US_SCORES_PATH: Path = ROOT_DIR / "saved_models" / "us_model_scores.json"
 
-    US_CROP_LIST: ClassVar[list[str]] = [
+    # Deduplicated annual & multi-year rotation crops (used by seasonal rotation planner)
+    US_ROTATION_CROPS: ClassVar[list[str]] = [
         # --- Major Row Crops & Grains ---
         "corn",
-        "maize",
         "soybean",
         "wheat",
         "barley",
@@ -139,9 +139,8 @@ class Settings(BaseSettings):
         "cotton",
         "peanut",
         "sunflower",
-        "rapeseed",
         "canola",
-        # --- Sugar, Forage & Pulses (Rotation Crops) ---
+        # --- Sugar, Forage & Pulses ---
         "sugar beet",
         "sugarcane",
         "alfalfa",
@@ -149,9 +148,8 @@ class Settings(BaseSettings):
         "lentil",
         "chickpea",
         "common bean",
-        "dry bean",
         "pea",
-        # --- Vegetables & Root Crops ---
+        # --- Vegetables, Root Crops & Annual Fruit ---
         "potato",
         "sweet potato",
         "tomato",
@@ -162,21 +160,27 @@ class Settings(BaseSettings):
         "carrot",
         "spinach",
         "cabbage",
-        # --- Fruits & Tree Nuts ---
+        "watermelon",
+        "strawberry",
+    ]
+
+    # Multi-year orchards, vineyards, and perennial bushes (excluded from 90-day rotations)
+    US_PERENNIAL_CROPS: ClassVar[list[str]] = [
         "apple",
         "grape",
-        "orange",
         "citrus",
-        "strawberry",
         "blueberry",
         "peach",
         "cherry",
-        "watermelon",
         "almond",
         "walnut",
         "pistachio",
         "pecan",
     ]
+
+    # Combined deduplicated US crop list for data pipelines and standalone suitability scoring
+    US_CROP_LIST: ClassVar[list[str]] = US_ROTATION_CROPS + US_PERENNIAL_CROPS
+
     US_LOCATIONS: ClassVar[dict[str, list[float]]] = {
         # --- Midwest / Corn & Soybean Belt ---
         "Iowa_CornBelt": [-93.10, 41.88],

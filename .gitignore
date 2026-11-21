@@ -29,4 +29,3 @@ dist-ssr
 *.sw?
 data/
 cache/
-saved_models/

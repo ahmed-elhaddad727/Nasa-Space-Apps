@@ -15,7 +15,6 @@ app_settings = get_settings()
 
 import numpy as np
 import pandas as pd
-from ai_model.models.egypt_model import CROPS_CSV, INDICATORS_CSV, SEASON_OF_MONTH
 
 
 def add_season(df, SEASON_OF_MONTH, date_col="date"):
@@ -129,8 +128,8 @@ def score_location(d, crops):
     row = lambda name: crops[name].to_numpy()[None, :]  # 1 x crops
 
     t, tn, tx = col("Temperature_C"), col("Temp_Min_C"), col("Temp_Max_C")
-    topmn, topmx, tmin, tmax, ktmp = (
-        row(c) for c in ["TOPMN", "TOPMX", "TMIN", "TMAX", "KTMP"]
+    topmn, topmx, tmin, tmax = (
+        row(c) for c in ["TOPMN", "TOPMX", "TMIN", "TMAX"]
     )
 
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -178,9 +177,9 @@ def score_location(d, crops):
         )
         deficit = np.maximum(0.0, need - col("precip_30d") - credit)
 
-        frost = ~np.isnan(ktmp) & (tn <= ktmp)
-    suit = np.where(frost, 0.0, suit)
-    deficit = np.where(frost, 0.0, deficit)
+    #     # frost = ~np.isnan(ktmp) & (tn <= ktmp)
+    # suit = np.where(frost, 0.0, suit)
+    # deficit = np.where(frost, 0.0, deficit)
 
     names = crops["COMNAME"].tolist()
     keys = [d["season"].to_numpy(), d["season_year"].to_numpy()]

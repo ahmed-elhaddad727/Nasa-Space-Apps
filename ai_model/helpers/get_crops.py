@@ -13,7 +13,10 @@ if str(repo_root) not in sys.path:
 DEFAULT_INPUT = Path("data/EcoCrop_DB_cleaned.csv")
 
 from ai_model.config import get_settings
-app_settings=get_settings()
+
+app_settings = get_settings()
+
+
 def extract_crops(
     crops_list: list,
     region: str,

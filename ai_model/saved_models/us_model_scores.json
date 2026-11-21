@@ -1,0 +1,30 @@
+{
+  "tuned_model": {
+    "best_params": {
+      "l2_regularization": 2.1257793724562237,
+      "learning_rate": 0.05158833257363777,
+      "max_iter": 971,
+      "max_leaf_nodes": 84,
+      "min_samples_leaf": 38
+    },
+    "cv_MAE": 1.363756706909136,
+    "train_MAE": 0.4900070423531615,
+    "train_R2": 0.9990747246747794
+  },
+  "suitability_time_split": {
+    "MAE": 1.1230835811895328,
+    "R2": 0.997137736843637
+  },
+  "suitability_formula_on_seasonal_means": {
+    "MAE": 7.286961733979024,
+    "R2": 0.8677316636886168
+  },
+  "suitability_location_split": {
+    "MAE": 1.929555643744579,
+    "R2": 0.9915980681556004
+  },
+  "deficit_formula_vs_label": {
+    "MAE": 34.71533997313298,
+    "R2": 0.7239147716209116
+  }
+}
