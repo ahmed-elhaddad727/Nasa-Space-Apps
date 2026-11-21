@@ -12,7 +12,7 @@ import {
 } from './i18n';
 import { speak, stopSpeaking } from './utils/speech';
 
-const BG_IMAGE = '/IMG-20261120-WA0139.jpg';
+const BG_IMAGE = '/bg-image.jpg';
 
 interface CropResultsProps {
   result: BackendResponse;

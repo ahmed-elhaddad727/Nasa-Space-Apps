@@ -31,8 +31,8 @@ export interface BackendResponse {
 }
 
 const BACKEND_URL =
-  import.meta.env.VITE_API_URL ||
-  "https://agrishift-server.vercel.app/rotation/recommend/coordinates";
+  // import.meta.env.VITE_API_URL ||
+  "http:localhost:8000/rotation/recommend/coordinates";
 
 const STATIC_CROP_IMAGES: Record<string, string> = {
   corn: "/static/corn.jpg",
@@ -125,17 +125,40 @@ export async function sendAgroDataToBackend(
         const second = steps[1] || {};
         const third = steps[2];
 
+<<<<<<< Updated upstream
         const cropName = cleanCropName(first.crop || "wheat");
         const cropKey = cropName.toLowerCase();
+=======
+      const cropName = (first.crop).trim();
+      const nextChain = [second.crop, third?.crop]
+        .filter(Boolean)
+        .map((c: string) => c.trim())
+        .join(" → ");
+>>>>>>> Stashed changes
 
         if (skipWildGrasses && isWildForageGrass(cropKey)) continue;
         if (seenCrops.has(cropKey)) continue;
         seenCrops.add(cropKey);
 
+<<<<<<< Updated upstream
         const nextChain = [second.crop, third?.crop]
           .filter(Boolean)
           .map((c: string) => cleanCropName(c))
           .join(" → ");
+=======
+      recommendations.push({
+        crop: cropName,
+        suitability_score: Math.round(first.suitability ?? planObj.score ?? 90),
+        season: first.season,
+        rotation_next: nextChain,
+        notes: `Top rotation score: ${planObj.score}/100. Unmet water need: ${
+          first.water_need_unmet_pct ?? 0
+        }% (irrigation deficit: ${
+          first.avg_monthly_irrigation_deficit_mm ?? 0
+        } mm/mo).`,
+        image_url: getCropImageUrl(cropName),
+      });
+>>>>>>> Stashed changes
 
         list.push({
           crop: cropName,
@@ -174,7 +197,7 @@ export async function sendAgroDataToBackend(
 
     return {
       status: "suitable",
-      location_summary: `${(data.nation || "Egypt").toUpperCase()} — Lat ${payload.coordinates.latitude.toFixed(
+      location_summary: `${(data.nation).toUpperCase()} — Lat ${payload.coordinates.latitude.toFixed(
         2,
       )}°, Lon ${payload.coordinates.longitude.toFixed(2)}°`,
       recommendations,
