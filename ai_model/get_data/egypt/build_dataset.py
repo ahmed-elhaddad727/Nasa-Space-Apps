@@ -9,14 +9,13 @@ from ai_model.config import get_settings
 
 app_settings = get_settings()
 from ai_model.helpers import build
-from ai_model.models.egypt_model import SEASON_DAYS
 
 build(
     app_settings.EGYPTAIN_SEASON_OF_MONTH,
-    SEASON_DAYS,
+    app_settings.EGYPTAIN_SEASON_DAYS,
     app_settings.EGYPTAIN_MIN_SEASON_COVERAGE,
     app_settings.CLIMATE_FEATURES,
-    ["data/egypt/egypt_climate_soil_data.csv"],
-    "data/egypt/egypt_EcoCrop_DB.csv",
-    "data/egypt/egypt_training_data.csv",
+    ["/data/egypt/egypt_climate_soil_data.csv"],
+    "/data/egypt/egypt_EcoCrop_DB.csv",
+    "/data/egypt/egypt_training_data.csv",
 )

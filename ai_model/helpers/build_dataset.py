@@ -69,7 +69,6 @@ def load_indicators(SEASON_OF_MONTH, INDICATOR_FILES):
 def load_crops(CROPS_CSV):
     crops = pd.read_csv(CROPS_CSV)
     crops.columns = crops.columns.str.strip().str.upper()
-
     crops["COMNAME"] = crops["COMNAME"].astype(str).str.lower()
     keep = ["COMNAME", "FAMNAME"] + app_settings.CROP_PARAMS
     crops = crops[[c for c in keep if c in crops.columns]].copy()

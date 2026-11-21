@@ -1,9 +1,10 @@
-import pathlib
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from functools import lru_cache
+from pathlib import Path
 from typing import ClassVar
 import datetime
+
 import pandas as pd
-from pathlib import Path
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -25,9 +26,15 @@ class Settings(BaseSettings):
     ROOT_DIR: Path = Path(__file__).resolve().parents[1]
     NASA_POWER_URL: str = "https://power.larc.nasa.gov/api/temporal/daily/point"
 
-    # Egypt:
+    # ---------------- Egypt ----------------
+    EGYPT_DATA_DIR: Path = Path("/data/egypt")
+    EGYPT_TRAINING_CSV: Path = EGYPT_DATA_DIR / "egypt_training_data.csv"
+    EGYPT_CROPS_CSV: Path = EGYPT_DATA_DIR / "egypt_EcoCrop_DB.csv"
+    EGYPT_INDICATORS_CSV: Path = EGYPT_DATA_DIR / "egypt_climate_soil_data.csv"
     EGYPT_MODEL_PATH: Path = ROOT_DIR / "saved_models" / "egypt_rotation_model.joblib"
-    EGYPTAIN_CROP_LIST: ClassVar[list[str]] = [
+    EGYPT_SCORES_PATH: Path = ROOT_DIR / "saved_models" / "egypt_model_scores.json"
+
+    EGYPT_CROP_LIST: ClassVar[list[str]] = [
         "wheat",
         "corn",
         "rice",
@@ -87,8 +94,8 @@ class Settings(BaseSettings):
         "toshka": [31.53, 22.60],
         "east_owainat": [28.72, 22.58],
     }
-    EGYPTAIN_SEASON_DAYS: ClassVar[dict[str, int]] = {"winter": 181, "summer": 184}
-    EGYPTAIN_SEASON_OF_MONTH: ClassVar[dict[int, str]] = {
+    EGYPT_SEASON_DAYS: ClassVar[dict[str, int]] = {"winter": 181, "summer": 184}
+    EGYPT_SEASON_OF_MONTH: ClassVar[dict[int, str]] = {
         11: "winter",
         12: "winter",
         1: "winter",
@@ -102,10 +109,22 @@ class Settings(BaseSettings):
         9: "summer",
         10: "summer",
     }
-    EGYPTAIN_MIN_SEASON_COVERAGE: ClassVar[float] = 0.8
+    EGYPT_MIN_SEASON_COVERAGE: ClassVar[float] = 0.8
 
-    # US
+    # Backward-compatible aliases for legacy EGYPTAIN_* references
+    EGYPTAIN_CROP_LIST: ClassVar[list[str]] = EGYPT_CROP_LIST
+    EGYPTAIN_SEASON_DAYS: ClassVar[dict[str, int]] = EGYPT_SEASON_DAYS
+    EGYPTAIN_SEASON_OF_MONTH: ClassVar[dict[int, str]] = EGYPT_SEASON_OF_MONTH
+    EGYPTAIN_MIN_SEASON_COVERAGE: ClassVar[float] = EGYPT_MIN_SEASON_COVERAGE
+
+    # ---------------- US ----------------
+    US_DATA_DIR: Path = Path("/data/us")
+    US_TRAINING_CSV: Path = US_DATA_DIR / "us_training_data.csv"
+    US_CROPS_CSV: Path = US_DATA_DIR / "us_EcoCrop_DB.csv"
+    US_INDICATORS_CSV: Path = US_DATA_DIR / "us_climate_soil_data.csv"
     US_MODEL_PATH: Path = ROOT_DIR / "saved_models" / "us_rotation_model.joblib"
+    US_SCORES_PATH: Path = ROOT_DIR / "saved_models" / "us_model_scores.json"
+
     US_CROP_LIST: ClassVar[list[str]] = [
         # --- Major Row Crops & Grains ---
         "corn",
@@ -216,6 +235,8 @@ class Settings(BaseSettings):
         11: "fall",
     }
     US_MIN_SEASON_COVERAGE: ClassVar[float] = 0.8
+
+    # ---------------- Shared Model & Agroclimatic Constants ----------------
     CLIMATE_FEATURES: ClassVar[list[str]] = [
         "t_mean",
         "t_min_mean",
@@ -226,15 +247,27 @@ class Settings(BaseSettings):
         "precip_total",
         "sm_mean",
     ]
+    EXTRA_CLIMATE_FEATURES: ClassVar[list[str]] = [
+        "t_std",
+        "t_min_p05",
+        "t_max_p95",
+        "frac_tmin_lt0",
+        "frac_tmin_lt5",
+        "frac_tmax_gt35",
+        "frac_tmax_gt40",
+    ]
 
     CROP_PARAMS: ClassVar[list[str]] = [
         "TOPMN",
         "TOPMX",
         "TMIN",
         "TMAX",
-        "KTMP",
-        "GMIN",
         "ROPMN",
+        "ROPMX",
+        "RMIN",
+        "RMAX",
+        "GMIN",
+        "GMAX",
     ]
 
     REQUIRED_DAILY: ClassVar[list[str]] = [
@@ -252,17 +285,19 @@ class Settings(BaseSettings):
     SM_OPT: ClassVar[float] = 0.30
     ROOT_DEPTH_MM: ClassVar[int] = 300
     SOIL_CREDIT: ClassVar[float] = 0.5
+
+    # ---------------- Earth Engine & NASA Datasets ----------------
     LST: str = "MODIS/061/MOD11A2"
     NDVI: str = "MODIS/061/MOD13Q1"
     IMERG: str = "NASA/GPM_L3/IMERG_V07"
     SMAP: str = "NASA/SMAP/SPL4SMGP/008"
+    ERA5: ClassVar[str] = "ECMWF/ERA5_LAND/DAILY_AGGR"  # daily air temperature in (Kelvin)
 
-    ERA5: ClassVar[str] = "ECMWF/ERA5_LAND/DAILY_AGGR"  # daily air temperature (Kelvin)
     CACHE_DIR: ClassVar[Path] = Path("cache")
-
     END_EXCL: ClassVar[datetime.datetime] = pd.Timestamp(END) + pd.Timedelta(days=1)
     FULL_DAYS: ClassVar[pd.DatetimeIndex] = pd.date_range(START, END, freq="D")
 
 
-def get_settings():
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
     return Settings()

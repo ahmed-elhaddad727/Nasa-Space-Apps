@@ -3,11 +3,12 @@ egypt_model.py
 
 Importing this module runs nothing. Use it like this:
 
-    from server.models.egypt_model import train, recommend, print_plans
+    from models.egypt_model import train, recommend, print_plans
     train()
     print_plans(recommend("beheira_damanhur", "2026-11-17", previous_crop="wheat"))
 """
 
+from functools import lru_cache
 import itertools
 import json
 from pathlib import Path
@@ -24,32 +25,15 @@ from sklearn.model_selection import GroupKFold, RandomizedSearchCV
 repo_root = Path(__file__).resolve().parents[1]
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
+from config import get_settings
+
+app_settings = get_settings()
 
 # ---------------- Paths ----------------
-ROOT_DIR = Path(__file__).resolve().parents[1]
-
-TRAINING_CSV = "data/egypt/egypt_training_data.csv"
-CROPS_CSV = "data/egypt/egypt_EcoCrop_DB.csv"
-INDICATORS_CSV = "data/egypt/egypt_climate_soil_data.csv"
-MODEL_PATH = "saved_models/egypt_rotation_model.joblib"
-SCORES_PATH = "saved_models/egypt_model_scores.json"
-
-# ---------------- Seasons ----------------
-SEASON_OF_MONTH = {
-    11: "winter",
-    12: "winter",
-    1: "winter",
-    2: "winter",
-    3: "winter",
-    4: "winter",
-    5: "summer",
-    6: "summer",
-    7: "summer",
-    8: "summer",
-    9: "summer",
-    10: "summer",
-}
-SEASON_DAYS = {"winter": 181, "summer": 184}
+TRAINING_CSV = Path("/data/egypt/egypt_training_data.csv")
+CROPS_CSV = Path("/data/egypt/egypt_EcoCrop_DB.csv")
+MODEL_PATH = Path(app_settings.EGYPT_MODEL_PATH)
+SCORES_PATH = app_settings.ROOT_DIR / "saved_models" / "egypt_model_scores.json"
 
 # ---------------- Rotation rules (tunable heuristics) ----------------
 WATER_PENALTY = 25
@@ -61,16 +45,7 @@ LEGUME_FAMILIES = {"fabaceae", "leguminosae"}
 
 TARGET = "suitability_score"
 
-BASE_CLIMATE = [
-    "t_mean",
-    "t_min_mean",
-    "t_max_mean",
-    "t_min_abs",
-    "t_max_abs",
-    "ndvi_mean",
-    "precip_total",
-    "sm_mean",
-]
+BASE_CLIMATE = list(app_settings.CLIMATE_FEATURES)
 EXTRA_CLIMATE = [
     "t_std",
     "t_min_p05",
@@ -81,13 +56,16 @@ EXTRA_CLIMATE = [
     "frac_tmax_gt40",
 ]
 CLIMATE_FEATURES = BASE_CLIMATE + EXTRA_CLIMATE
-CROP_PARAMS = ["TOPMN", "TOPMX", "TMIN", "TMAX", "KTMP", "GMIN", "ROPMN"]
+CROP_PARAMS = [
+    p
+    for p in app_settings.CROP_PARAMS
+    if p in {"TOPMN", "TOPMX", "TMIN", "TMAX", "GMIN", "ROPMN"}
+]
 DERIVED = [
     "d_tmean_topmn",
     "d_tmean_topmx",
     "d_tmean_tmin",
     "d_tmean_tmax",
-    "d_tminabs_ktmp",
     "d_tmaxabs_tmax",
     "d_tmaxmean_tmax",
     "need_month",
@@ -98,13 +76,13 @@ FEATURES = ["season_is_winter", "lat", "lon"] + CLIMATE_FEATURES + CROP_PARAMS +
 
 def make_features(
     df,
-    w_ndvi=0.20,
-    w_moist=0.20,
-    ndvi_full=0.60,
-    sm_wilt=0.10,
-    sm_opt=0.30,
-    root_mm=300,
-    credit=0.5,
+    w_ndvi=app_settings.W_NDVI,
+    w_moist=app_settings.W_MOIST,
+    ndvi_full=app_settings.NDVI_FULL,
+    sm_wilt=app_settings.SM_WILT,
+    sm_opt=app_settings.SM_OPT,
+    root_mm=app_settings.ROOT_DEPTH_MM,
+    credit=app_settings.SOIL_CREDIT,
 ):
     """Adds crop-relative features + the scoring formula evaluated on seasonal means."""
     df = df.copy()
@@ -112,13 +90,13 @@ def make_features(
     df["d_tmean_topmx"] = df["t_mean"] - df["TOPMX"]
     df["d_tmean_tmin"] = df["t_mean"] - df["TMIN"]
     df["d_tmean_tmax"] = df["t_mean"] - df["TMAX"]
-    df["d_tminabs_ktmp"] = (
-        df["t_min_abs"] - df["KTMP"]
-    )  # NaN if no KTMP (trees handle it)
     df["d_tmaxabs_tmax"] = df["t_max_abs"] - df["TMAX"]
     df["d_tmaxmean_tmax"] = df["t_max_mean"] - df["TMAX"]
 
-    season_days = np.where(df["season_is_winter"] == 1, 181, 184)
+    winter_days = app_settings.EGYPTAIN_SEASON_DAYS["winter"]
+    summer_days = app_settings.EGYPTAIN_SEASON_DAYS["summer"]
+    season_days = np.where(df["season_is_winter"] == 1, winter_days, summer_days)
+
     g_months = np.maximum(1.0, df["GMIN"].fillna(120) / 30.0)
     need = (df["ROPMN"] / g_months).fillna(100.0)
     precip_month = df["precip_total"] / (season_days / 30.0)
@@ -192,7 +170,7 @@ def new_model(params=None):
     return HistGradientBoostingRegressor(**defaults)
 
 
-def train_tuned_model(X_train, y_train, n_iter=20, cv=3):
+def train_tuned_model(X_train, y_train, groups=None, n_iter=20, cv=3):
     print("\nTuning hyperparameters with RandomizedSearchCV...")
     base_model = HistGradientBoostingRegressor(loss="absolute_error", random_state=42)
 
@@ -204,17 +182,22 @@ def train_tuned_model(X_train, y_train, n_iter=20, cv=3):
         "l2_regularization": uniform(0.0, 5.0),
     }
 
+    if groups is not None and pd.Series(groups).nunique() >= cv:
+        cv_splitter = GroupKFold(n_splits=cv)
+    else:
+        cv_splitter = cv
+
     search = RandomizedSearchCV(
         base_model,
         param_distributions=param_dist,
         n_iter=n_iter,
-        cv=cv,
+        cv=cv_splitter,
         scoring="neg_mean_absolute_error",
         n_jobs=-1,
         random_state=42,
     )
 
-    search.fit(X_train, y_train)
+    search.fit(X_train, y_train, groups=groups)
     clean_params = {
         k: (v.item() if hasattr(v, "item") else v)
         for k, v in search.best_params_.items()
@@ -247,11 +230,18 @@ def train():
     crops = load_crops()
     y = df[TARGET]
 
-    available_features = [feature for feature in FEATURES if feature in df.columns]
-    missing_features = [feature for feature in FEATURES if feature not in df.columns]
-    if missing_features:
+    # Exclude missing, all-NaN, or constant columns (which fail histogram binning)
+    available_features = [
+        feature
+        for feature in FEATURES
+        if feature in df.columns and df[feature].nunique(dropna=True) >= 2
+    ]
+    skipped_features = [
+        feature for feature in FEATURES if feature not in available_features
+    ]
+    if skipped_features:
         print(
-            f"Warning: Missing features in dataset, skipping: {set(missing_features)}"
+            f"Warning: Missing, all-NaN, or constant features skipped: {skipped_features}"
         )
 
     print(
@@ -259,8 +249,11 @@ def train():
         f"{df['COMNAME'].nunique()} crops | {df['season_year'].nunique()} season-years"
     )
 
-    # Tune hyperparameters first and refit on the full dataset
-    model, tuning_metrics = train_tuned_model(df[available_features], y)
+    model, tuning_metrics = train_tuned_model(
+        df[available_features],
+        y,
+        groups=df["season_year"],
+    )
     best_params = tuning_metrics["best_params"]
 
     scores = {"tuned_model": tuning_metrics}
@@ -303,10 +296,9 @@ def train():
         f"deficit formula vs label  MAE={scores['deficit_formula_vs_label']['MAE']:.2f}"
     )
 
-    scores_file = Path(SCORES_PATH)
-    scores_file.parent.mkdir(parents=True, exist_ok=True)
-    scores_file.write_text(json.dumps(scores, indent=2), encoding="utf-8")
-    print(f"Saved model scores to {scores_file}")
+    SCORES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SCORES_PATH.write_text(json.dumps(scores, indent=2), encoding="utf-8")
+    print(f"Saved model scores to {SCORES_PATH}")
 
     available_climate = [
         feature for feature in CLIMATE_FEATURES if feature in df.columns
@@ -323,8 +315,7 @@ def train():
         ["lat", "lon"] + available_climate
     ].mean()
 
-    model_file = Path(MODEL_PATH)
-    model_file.parent.mkdir(parents=True, exist_ok=True)
+    MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(
         {
             "model": model,
@@ -332,18 +323,24 @@ def train():
             "crops": crops,
             "climatology": climatology,
         },
-        model_file,
+        MODEL_PATH,
     )
-    print(f"Saved best tuned model to {model_file}")
+    _load_bundle.cache_clear()
+    print(f"Saved best tuned model to {MODEL_PATH}")
 
 
 # =====================================================================
 # Recommendation
 # =====================================================================
+@lru_cache(maxsize=1)
+def _load_bundle():
+    return joblib.load(MODEL_PATH)
+
+
 def upcoming_seasons(start, n=3, include_current=True):
     """List of (season, season_year, label). Winter(Y) -> Summer(Y+1) -> Winter(Y+1) ..."""
     start = pd.Timestamp(start)
-    season = SEASON_OF_MONTH[start.month]
+    season = app_settings.EGYPTAIN_SEASON_OF_MONTH[start.month]
     year = start.year - 1 if (season == "winter" and start.month <= 4) else start.year
 
     def step(s, y):
@@ -380,7 +377,9 @@ def score_crops(bundle, feats, season):
     crops["water_stress"] = np.clip(
         crops["deficit"] / np.maximum(crops["need_month"], 1.0), 0, 1
     )
-    crops["fits_season"] = crops["GMIN"].isna() | (crops["GMIN"] <= SEASON_DAYS[season])
+    crops["fits_season"] = crops["GMIN"].isna() | (
+        crops["GMIN"] <= app_settings.EGYPTAIN_SEASON_DAYS[season]
+    )
     return crops
 
 
@@ -524,7 +523,7 @@ def recommend_for_features(
 
 
 def recommend(location, start_date, previous_crop=None, n_seasons=3, top_n=12, top_k=5):
-    bundle = joblib.load(MODEL_PATH)
+    bundle = _load_bundle()
     clim = bundle["climatology"]
     if location not in set(clim["location"]):
         raise ValueError(

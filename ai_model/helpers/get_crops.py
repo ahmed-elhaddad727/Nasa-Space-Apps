@@ -3,23 +3,17 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from pathlib import Path
+import sys
+
+repo_root = Path(__file__).resolve().parents[3]
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
 
 DEFAULT_INPUT = Path("data/EcoCrop_DB_cleaned.csv")
-CORE_PARAMS = [
-    "TOPMN",
-    "TOPMX",
-    "TMIN",
-    "TMAX",
-    "KTMP",
-    "ROPMN",
-    "ROPMX",
-    "RMIN",
-    "RMAX",
-    "GMIN",
-    "GMAX",
-]
 
-
+from ai_model.config import get_settings
+app_settings=get_settings()
 def extract_crops(
     crops_list: list,
     region: str,
@@ -31,7 +25,7 @@ def extract_crops(
     df.columns = df.columns.str.strip().str.upper()
 
     column_name = "COMNAME"
-    existing_core = [c for c in CORE_PARAMS if c in df.columns]
+    existing_core = [c for c in app_settings.CROP_PARAMS if c in df.columns]
 
     # Ensure all parameter columns are numeric and require core temperature bounds
     for col in existing_core:
