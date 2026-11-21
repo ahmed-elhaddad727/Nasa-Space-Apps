@@ -244,46 +244,11 @@ export default function MapSelector({
           style={{ backgroundImage: `url('${BG_IMAGE}')` }}
           className="absolute inset-0 bg-cover bg-center"
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#05100a]/92 via-[#07180f]/75 to-[#06140c]/60" />
+        <div className="absolute inset-0 bg-linear-to-r from-[#05100a]/92 via-[#07180f]/75 to-[#06140c]/60" />
       </div>
 
       {/* Minimal Top Bar */}
       <nav className="relative z-10 w-full px-6 sm:px-10 lg:px-14 pt-6 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <svg
-            viewBox="0 0 110 92"
-            className="w-10 h-8 flex-shrink-0 drop-shadow"
-            aria-label="NASA"
-          >
-            <circle cx="52" cy="46" r="38" fill="#0B3D91" />
-            <path
-              d="M15 62 C 35 45, 72 22, 99 17 C 80 34, 48 56, 26 70 Z"
-              fill="#FC3D21"
-            />
-            <text
-              x="52"
-              y="54"
-              textAnchor="middle"
-              fill="#FFFFFF"
-              fontSize="21"
-              fontWeight="800"
-              fontFamily="system-ui, sans-serif"
-              letterSpacing="1"
-            >
-              NASA
-            </text>
-          </svg>
-          <div className="h-7 w-px bg-white/30" />
-          <div className="leading-tight">
-            <div className="text-xs sm:text-sm font-extrabold tracking-wider uppercase text-white">
-              NASA
-            </div>
-            <div className="text-[11px] font-medium text-white/75">
-              Space Apps
-            </div>
-          </div>
-        </div>
-
         <button
           onClick={onToggleLang}
           aria-label="Switch language"
@@ -405,7 +370,7 @@ export default function MapSelector({
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
               onMouseLeave={handleMouseUp}
-              className="relative w-full aspect-[16/10] lg:aspect-[16/9.5] rounded-3xl overflow-hidden cursor-crosshair bg-[#040d18] border border-white/35 shadow-[0_25px_70px_-15px_rgba(0,0,0,0.85)]"
+              className="relative w-full aspect-16/10 lg:aspect-16/9.5 rounded-3xl overflow-hidden cursor-crosshair bg-[#040d18] border border-white/35 shadow-[0_25px_70px_-15px_rgba(0,0,0,0.85)]"
             >
               <div
                 style={{
@@ -498,7 +463,7 @@ export default function MapSelector({
                 strokeWidth="1.8"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                className="w-4 h-4 flex-shrink-0 text-[#6AB04C]"
+                className="w-4 h-4 shrink-0 text-[#6AB04C]"
                 aria-hidden="true"
               >
                 <path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2" />
