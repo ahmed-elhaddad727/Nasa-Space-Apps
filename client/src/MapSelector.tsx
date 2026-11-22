@@ -562,17 +562,67 @@ export default function MapSelector({
                   className="w-full h-full object-cover pointer-events-none"
                 />
 
-                {/* Glowing Pin */}
+                {/* Precision Crosshair */}
                 <div
                   style={{
                     left: `${pointerLeftPct}%`,
                     top: `${pointerTopPct}%`,
                     transform: `translate(-50%, -50%) scale(${1 / zoom})`,
                   }}
-                  className="absolute w-7 h-7 pointer-events-none"
+                  className="absolute w-9 h-9 pointer-events-none flex items-center justify-center"
                 >
-                  <span className="absolute inset-0 rounded-full bg-amber-300/75 animate-ping motion-reduce:animate-none" />
-                  <span className="absolute inset-1 rounded-full bg-amber-400 border-2 border-white shadow-lg" />
+                  <svg
+                    viewBox="0 0 36 36"
+                    className="w-full h-full drop-shadow-[0_1px_3px_rgba(0,0,0,0.95)]"
+                    aria-hidden="true"
+                  >
+                    <circle
+                      cx="18"
+                      cy="18"
+                      r="9"
+                      fill="none"
+                      stroke="#FFFFFF"
+                      strokeWidth="1.5"
+                      strokeOpacity="0.9"
+                    />
+                    <line
+                      x1="18"
+                      y1="2"
+                      x2="18"
+                      y2="12"
+                      stroke="#FFFFFF"
+                      strokeWidth="1.75"
+                      strokeLinecap="round"
+                    />
+                    <line
+                      x1="18"
+                      y1="24"
+                      x2="18"
+                      y2="34"
+                      stroke="#FFFFFF"
+                      strokeWidth="1.75"
+                      strokeLinecap="round"
+                    />
+                    <line
+                      x1="2"
+                      y1="18"
+                      x2="12"
+                      y2="18"
+                      stroke="#FFFFFF"
+                      strokeWidth="1.75"
+                      strokeLinecap="round"
+                    />
+                    <line
+                      x1="24"
+                      y1="18"
+                      x2="34"
+                      y2="18"
+                      stroke="#FFFFFF"
+                      strokeWidth="1.75"
+                      strokeLinecap="round"
+                    />
+                    <circle cx="18" cy="18" r="2" fill="#FBBF24" />
+                  </svg>
                 </div>
               </div>
 
