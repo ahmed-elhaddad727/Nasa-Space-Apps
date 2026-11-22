@@ -14,6 +14,72 @@ import { speak, stopSpeaking } from "./utils/speech";
 
 const BG_IMAGE = "/bg-image.jpg";
 
+const CROP_IMAGES: Record<string, string> = {
+  apple: "apple.jpg",
+  grape: "grape.jpg",
+  citrus: "citrus.jpg",
+  blueberry: "blueberry.jpg",
+  peach: "peach.jpg",
+  cherry: "cherry.jpg",
+  almond: "almond.jpg",
+  walnut: "walnut.jpg",
+  pistachio: "pistachio.jpg",
+  pecan: "pecan.jpg",
+  corn: "corn.jpg",
+  soybean: "soybean.jpg",
+  wheat: "wheat.jpg",
+  barley: "barley.jpg",
+  oats: "oats.jpg",
+  rye: "rye.jpg",
+  sorghum: "sorghum.jpg",
+  rice: "rice.jpg",
+  cotton: "cotton.jpg",
+  peanut: "peanut.jpg",
+  sunflower: "sunflower.jpg",
+  canola: "canola.jpg",
+  sugar_beet: "sugar_beet.jpg",
+  sugarcane: "sugarcane.jpg",
+  alfalfa: "alfalfa.jpg",
+  clover: "clover.jpg",
+  lentil: "lentil.jpg",
+  chickpea: "chickpea.jpg",
+  common_bean: "common_bean.jpg",
+  pea: "pea.jpg",
+  potato: "potato.jpg",
+  sweet_potato: "sweet_potato.jpg",
+  tomato: "tomato.jpg",
+  onion: "onion.jpg",
+  garlic: "garlic.jpg",
+  lettuce: "lettuce.jpg",
+  broccoli: "broccoli.jpg",
+  carrot: "carrot.jpg",
+  spinach: "spinach.jpg",
+  cabbage: "cabbage.jpg",
+  watermelon: "watermelon.jpg",
+  strawberry: "strawberry.jpg",
+  faba_bean: "faba_bean.jpg",
+  broad_bean: "broad_bean.jpg",
+  berseem: "berseem.jpg",
+  date_palm: "date_palm.jpg",
+  orange: "orange.jpg",
+  mango: "mango.jpg",
+  banana: "banana.jpg",
+};
+
+// Sort longest keys first so "sweet_potato" matches before "potato" and "peanut" before "pea"
+const SORTED_CROP_ENTRIES = Object.entries(CROP_IMAGES).sort(
+  ([a], [b]) => b.length - a.length,
+);
+
+function getCropImage(cropName: string): string | undefined {
+  const normalized = cropName
+    .toLowerCase()
+    .trim()
+    .replace(/[\s-]+/g, "_");
+  const match = SORTED_CROP_ENTRIES.find(([key]) => normalized.includes(key));
+  return match ? `/${match[1]}` : undefined;
+}
+
 interface CropResultsProps {
   result: BackendResponse;
   payload: NasaAgroPayload;
@@ -251,8 +317,8 @@ export default function CropResults({
         {isSuitable ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             {result.recommendations.slice(0, 3).map((item, idx) => {
-              const showImage =
-                Boolean(item.image_url) && !failedImages[item.image_url!];
+              const imageSrc = getCropImage(item.crop) || item.image_url;
+              const showImage = Boolean(imageSrc) && !failedImages[imageSrc!];
 
               return (
                 <article
@@ -262,12 +328,12 @@ export default function CropResults({
                   <div>
                     {showImage && (
                       <img
-                        src={item.image_url}
+                        src={imageSrc}
                         alt={translateCrop(item.crop, lang)}
                         onError={() =>
                           setFailedImages((prev) => ({
                             ...prev,
-                            [item.image_url!]: true,
+                            [imageSrc!]: true,
                           }))
                         }
                         className="w-full h-40 object-cover"
