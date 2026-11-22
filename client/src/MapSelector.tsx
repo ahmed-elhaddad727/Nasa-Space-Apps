@@ -1,10 +1,11 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import {
   sendAgroDataToBackend,
+  fetchAvailableCrops,
   NasaAgroPayload,
   BackendResponse,
 } from "./services/cropApi";
-import { Lang, UI_TEXT } from "./i18n";
+import { Lang, UI_TEXT, translateCrop } from "./i18n";
 
 const BG_IMAGE = "/bg-image.jpg";
 
@@ -37,13 +38,53 @@ export default function MapSelector({
   const [error, setError] = useState<string | null>(null);
   const [liveAnnouncement, setLiveAnnouncement] = useState<string>("");
 
+  // Searchable previous crop dropdown state
+  const [availableCrops, setAvailableCrops] = useState<string[]>([]);
+  const [previousCrop, setPreviousCrop] = useState<string | null>(null);
+  const [cropSearch, setCropSearch] = useState<string>("");
+  const [isCropMenuOpen, setIsCropMenuOpen] = useState<boolean>(false);
+
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const cropDropdownRef = useRef<HTMLDivElement | null>(null);
   const isDraggingPointerRef = useRef<boolean>(false);
   const isPanningMapRef = useRef<boolean>(false);
   const panStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const t = UI_TEXT[lang];
   const isRtl = lang === "ar";
+
+  useEffect(() => {
+    let active = true;
+    fetchAvailableCrops().then((crops) => {
+      if (active) setAvailableCrops(crops);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (
+        cropDropdownRef.current &&
+        !cropDropdownRef.current.contains(e.target as Node)
+      ) {
+        setIsCropMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, []);
+
+  const filteredCrops = useMemo(() => {
+    const q = cropSearch.trim().toLowerCase();
+    if (!q) return availableCrops;
+    return availableCrops.filter((crop) => {
+      const en = crop.toLowerCase();
+      const ar = translateCrop(crop, "ar").toLowerCase();
+      return en.includes(q) || ar.includes(q);
+    });
+  }, [availableCrops, cropSearch]);
 
   useEffect(() => {
     const handleContextMenu = (e: MouseEvent) => e.preventDefault();
@@ -143,6 +184,7 @@ export default function MapSelector({
           latitude: targetCoords.lat,
           longitude: targetCoords.lon,
         },
+        previous_crop: previousCrop,
         agroclimatology: {
           T2M: cleanVal(params.T2M?.[yyyymmdd]),
           PRECTOTCORR: cleanVal(params.PRECTOTCORR?.[yyyymmdd]),
@@ -225,6 +267,15 @@ export default function MapSelector({
   const glassBtn =
     "bg-white/[0.12] backdrop-blur-xl text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_8px_24px_rgba(0,0,0,0.3)] hover:bg-white/20 active:scale-[0.99] transition cursor-pointer";
 
+  const prevCropLabel = isRtl
+    ? "المحصول المزروع سابقاً (اختياري)"
+    : "Previously planted crop (optional)";
+  const prevCropPlaceholder = isRtl
+    ? "لا يوجد / تخطي"
+    : "None / First-time planting";
+  const searchPlaceholder = isRtl ? "ابحث عن محصول..." : "Search crops...";
+  const noMatchesLabel = isRtl ? "لا توجد نتائج" : "No matching crops";
+
   return (
     <div
       dir={isRtl ? "rtl" : "ltr"}
@@ -276,9 +327,9 @@ export default function MapSelector({
       {/* Main High-Impact Split Hero */}
       <main className="relative z-10 w-full px-6 sm:px-10 lg:px-14 pt-6 pb-24 flex-1 flex flex-col justify-center">
         <div className="w-full grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center">
-          {/* Left Column: Oversized Editorial Headline + Tight CTAs */}
+          {/* Left Column: Oversized Editorial Headline + Previous Crop + Tight CTAs */}
           <div className="lg:col-span-5 flex flex-col justify-center">
-            <header className="mb-6">
+            <header className="mb-5">
               <h1
                 className={`text-5xl sm:text-6xl xl:text-[4.35rem] font-black uppercase tracking-tighter leading-[0.94] text-white drop-shadow-md ${
                   isRtl ? "" : "italic"
@@ -291,6 +342,129 @@ export default function MapSelector({
                 {t.mapSubtitle}
               </p>
             </header>
+
+            {/* Searchable Previous Crop Dropdown (above the two buttons) */}
+            <div ref={cropDropdownRef} className="relative mb-4 max-w-lg z-30">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-white/70 mb-1.5">
+                {prevCropLabel}
+              </label>
+
+              <button
+                type="button"
+                onClick={() => setIsCropMenuOpen((o) => !o)}
+                aria-expanded={isCropMenuOpen}
+                className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-2xl text-sm font-semibold ${glassBtn}`}
+              >
+                <span className="truncate capitalize">
+                  {previousCrop
+                    ? translateCrop(previousCrop, lang)
+                    : prevCropPlaceholder}
+                </span>
+                <div className="flex items-center gap-2 shrink-0">
+                  {previousCrop && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      aria-label="Clear previous crop"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPreviousCrop(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.stopPropagation();
+                          setPreviousCrop(null);
+                        }
+                      }}
+                      className="w-5 h-5 rounded-full bg-white/15 hover:bg-white/30 flex items-center justify-center text-xs leading-none"
+                    >
+                      ×
+                    </span>
+                  )}
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={`w-4 h-4 transition-transform ${
+                      isCropMenuOpen ? "rotate-180" : ""
+                    }`}
+                  >
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </div>
+              </button>
+
+              {isCropMenuOpen && (
+                <div className="absolute left-0 right-0 mt-2 rounded-2xl bg-[#0b1f14]/95 backdrop-blur-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_20px_50px_rgba(0,0,0,0.65)] overflow-hidden">
+                  {/* Search input */}
+                  <div className="p-2.5 border-b border-white/10">
+                    <input
+                      type="text"
+                      value={cropSearch}
+                      onChange={(e) => setCropSearch(e.target.value)}
+                      placeholder={searchPlaceholder}
+                      autoFocus
+                      className="w-full px-3.5 py-2 rounded-xl bg-white/10 text-sm text-white placeholder-white/50 focus:outline-none focus:bg-white/15 select-text"
+                    />
+                  </div>
+
+                  {/* Options list */}
+                  <ul className="max-h-52 overflow-y-auto py-1.5 text-sm">
+                    <li>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPreviousCrop(null);
+                          setCropSearch("");
+                          setIsCropMenuOpen(false);
+                        }}
+                        className={`w-full text-start px-4 py-2 hover:bg-white/10 transition cursor-pointer ${
+                          previousCrop === null
+                            ? "text-[#6AB04C] font-bold bg-white/[0.06]"
+                            : "text-white/75"
+                        }`}
+                      >
+                        {prevCropPlaceholder}
+                      </button>
+                    </li>
+
+                    {filteredCrops.length > 0 ? (
+                      filteredCrops.map((crop) => {
+                        const isSelected =
+                          previousCrop?.toLowerCase() === crop.toLowerCase();
+                        return (
+                          <li key={crop}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPreviousCrop(crop);
+                                setCropSearch("");
+                                setIsCropMenuOpen(false);
+                              }}
+                              className={`w-full text-start px-4 py-2 capitalize hover:bg-white/10 transition cursor-pointer ${
+                                isSelected
+                                  ? "text-[#6AB04C] font-bold bg-white/[0.06]"
+                                  : "text-white"
+                              }`}
+                            >
+                              {translateCrop(crop, lang)}
+                            </button>
+                          </li>
+                        );
+                      })
+                    ) : (
+                      <li className="px-4 py-3 text-xs text-white/55 text-center">
+                        {noMatchesLabel}
+                      </li>
+                    )}
+                  </ul>
+                </div>
+              )}
+            </div>
 
             <div className="flex flex-col sm:flex-row lg:flex-col xl:flex-row gap-3 max-w-lg">
               <button

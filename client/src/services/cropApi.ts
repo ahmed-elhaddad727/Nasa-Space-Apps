@@ -5,6 +5,7 @@ export interface NasaAgroPayload {
     latitude: number;
     longitude: number;
   };
+  previous_crop?: string | null;
   agroclimatology: {
     T2M: number | null;
     PRECTOTCORR: number | null;
@@ -57,9 +58,43 @@ const RAW_API_URL =
   import.meta.env.VITE_API_URL ||
   "http://localhost:8000/rotation/recommend/coordinates";
 
-const BACKEND_URL = RAW_API_URL.includes("/rotation/recommend/coordinates")
-  ? RAW_API_URL
-  : `${RAW_API_URL.replace(/\/+$/, "")}/rotation/recommend/coordinates`;
+const BASE_API_URL = RAW_API_URL.replace(
+  /\/rotation\/recommend\/coordinates\/?\$/,
+  "",
+).replace(/\/+\$/, "");
+
+const BACKEND_URL = `${BASE_API_URL}/rotation/recommend/coordinates`;
+const METADATA_URL = `${BASE_API_URL}/rotation/metadata`;
+
+const FALLBACK_CROPS = [
+  "Wheat",
+  "Durum Wheat",
+  "Barley",
+  "Maize",
+  "Corn",
+  "Rice",
+  "Cotton",
+  "Onion",
+  "Garlic",
+  "Potato",
+  "Tomato",
+  "Faba Bean",
+  "Egyptian Clover",
+  "Berseem",
+  "Sunflower",
+  "Sugar Beet",
+  "Sugarcane",
+  "Soybean",
+  "Sorghum",
+  "Peanut",
+  "Chickpea",
+  "Lentil",
+  "Common Bean",
+  "Alfalfa",
+  "Canola",
+  "Oats",
+  "Rye",
+];
 
 const STATIC_CROP_IMAGES: Record<string, string> = {
   corn: "/static/corn.jpg",
@@ -106,6 +141,23 @@ export function getCropImageUrl(cropName: string): string | undefined {
   return STATIC_CROP_IMAGES[key] ?? STATIC_CROP_IMAGES[canonicalCropKey(key)];
 }
 
+export async function fetchAvailableCrops(): Promise<string[]> {
+  try {
+    const res = await fetch(METADATA_URL);
+    if (!res.ok) return FALLBACK_CROPS;
+    const data = await res.json();
+    const list: string[] = Array.isArray(data?.all_crops) ? data.all_crops : [];
+    if (list.length === 0) return FALLBACK_CROPS;
+
+    const unique = Array.from(
+      new Set(list.map((c) => formatCropDisplay(c)).filter(Boolean)),
+    );
+    return unique.sort((a, b) => a.localeCompare(b));
+  } catch {
+    return FALLBACK_CROPS;
+  }
+}
+
 function buildRecommendation(
   planObj: BackendPlan,
   fallbackSeason: string,
@@ -144,6 +196,10 @@ function buildRecommendation(
 export async function sendAgroDataToBackend(
   payload: NasaAgroPayload,
 ): Promise<BackendResponse> {
+  const normalizedPrevCrop = payload.previous_crop
+    ? cleanCropName(payload.previous_crop).toLowerCase()
+    : null;
+
   const response = await fetch(BACKEND_URL, {
     method: "POST",
     headers: {
@@ -153,7 +209,7 @@ export async function sendAgroDataToBackend(
       lat: payload.coordinates.latitude,
       lon: payload.coordinates.longitude,
       start_date: payload.date,
-      previous_crop: null,
+      previous_crop: normalizedPrevCrop,
       top_k: 20,
     }),
   });
@@ -212,7 +268,7 @@ export async function sendAgroDataToBackend(
       if (selectedPlans.length === 3) break;
     }
 
-    // Pass 2: If fewer than 3 unique starting crops exist (e.g. all top plans start with "onion"),
+    // Pass 2: If fewer than 3 unique starting crops exist,
     // fill remaining slots with the highest-scoring distinct full rotation sequences.
     if (selectedPlans.length < 3) {
       for (const planObj of validPlans) {
