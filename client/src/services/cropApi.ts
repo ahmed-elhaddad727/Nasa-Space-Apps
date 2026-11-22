@@ -55,13 +55,9 @@ interface BackendApiResponse {
 }
 
 const RAW_API_URL =
-  import.meta.env.VITE_API_URL ||
-  "http://localhost:8000/rotation/recommend/coordinates";
+  import.meta.env.VITE_API_URL || "https://agrishift-server.vercel.app";
 
-const BASE_API_URL = RAW_API_URL.replace(
-  /\/rotation\/recommend\/coordinates\/?\$/,
-  "",
-).replace(/\/+\$/, "");
+const BASE_API_URL = new URL(RAW_API_URL.trim()).origin;
 
 const BACKEND_URL = `${BASE_API_URL}/rotation/recommend/coordinates`;
 const METADATA_URL = `${BASE_API_URL}/rotation/metadata`;
